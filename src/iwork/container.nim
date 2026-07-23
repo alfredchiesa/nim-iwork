@@ -4,6 +4,9 @@
 
 import std/[logging, os, strutils, tables, tempfiles]
 import zippy/ziparchives
+import ./errors
+
+export errors
 
 type
   ContainerKind* = enum
@@ -12,9 +15,6 @@ type
 
   DocKind* = enum
     dkKeynote, dkPages, dkNumbers
-
-  IworkError* = object of CatchableError
-  IworkUnsupportedError* = object of IworkError
 
   IworkContainer* = ref object
     path*: string
@@ -94,7 +94,7 @@ proc detectDocKind(path: string, entries: OrderedTable[string, string]): DocKind
 proc openContainer*(path: string): IworkContainer =
   ## opens a keynote, pages, or numbers document (zip or directory bundle)
   if not fileExists(path) and not dirExists(path):
-    raise newException(IworkError, "no such document: " & path)
+    raise newException(IworkContainerError, "no such document: " & path)
   result = IworkContainer(path: path)
   var layout: string
   if dirExists(path):
@@ -114,9 +114,9 @@ proc openContainer*(path: string): IworkContainer =
     " entries=", result.entries.len, " layout=", layout
 
 proc readEntry*(c: IworkContainer, path: string): string =
-  ## returns the raw bytes of an entry, or raises IworkError if missing
+  ## returns the raw bytes of an entry, or raises IworkContainerError if missing
   if path notin c.entries:
-    raise newException(IworkError, "no entry " & path & " in " & c.path)
+    raise newException(IworkContainerError, "no entry " & path & " in " & c.path)
   c.entries[path]
 
 proc iwaEntries*(c: IworkContainer): seq[string] =

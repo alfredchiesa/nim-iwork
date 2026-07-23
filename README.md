@@ -16,9 +16,14 @@ Pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers d
   rejected with `IworkUnsupportedError`
 - Decoding the `.iwa` snappy chunk format via `decodeIwa` (raw snappy blocks,
   no stream framing), with `IworkFormatError` on malformed input
+- A generic protobuf wire-format decoder (`decodeMessage` plus typed getters)
+  with no proto files or codegen - messages decode into a field-number tree
+- The full object graph: `buildIndex` parses every `.iwa` into a
+  `Table[uint64, IworkObject]`, and `deref` / `derefAll` resolve
+  `TSP.Reference` chains between objects
 
-Not yet implemented: protobuf decoding of the decompressed streams, or any
-higher-level document model.
+Not yet implemented: typed archives on top of the generic tree, text
+extraction, or any higher-level document model.
 
 ## Notable Updates
 
@@ -38,6 +43,12 @@ tools/iworkdump ls deck.key
 
 # write an entry's decompressed stream to stdout
 tools/iworkdump cat deck.key Index/Document.iwa > document.bin
+
+# list every object's id, registry type, and top-level field numbers
+tools/iworkdump objects deck.key
+
+# pretty-print one object's field tree as json
+tools/iworkdump obj deck.key 1
 ```
 
 ## Supported File Types

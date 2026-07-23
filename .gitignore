@@ -62,4 +62,5 @@ Icon?
 
 # env / secrets
 .env
-.env.local
+.env.localtests/twire
+tests/tobjects

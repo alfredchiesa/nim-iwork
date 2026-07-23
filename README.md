@@ -2,6 +2,22 @@
 
 Pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers documents
 
+## What works so far
+
+- Opening iWork 2013+ document containers via `openContainer(path)`:
+  - single-file zip documents with `Index/*.iwa` entries
+  - zip documents holding a nested `Index.zip` with the iwa files
+  - directory bundles with the same layout
+- Document kind detection (`dkKeynote`, `dkPages`, `dkNumbers`) from the file
+  extension, with content sniffing as a fallback for extensionless input
+- Listing `.iwa` entries (`iwaEntries`) and reading raw entry bytes
+  (`readEntry`), plus `metadataPlist` for `Metadata/Properties.plist`
+- Legacy pre-2013 documents (`index.xml` / `index.apxl`) are detected and
+  rejected with `IworkUnsupportedError`
+
+Not yet implemented: snappy decompression of `.iwa` archives, protobuf
+decoding, or any higher-level document model.
+
 ## Notable Updates
 
 ## Install

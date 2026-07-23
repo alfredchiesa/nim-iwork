@@ -1,5 +1,65 @@
+# nim
 nimcache/
 nimblecache/
 htmldocs/
+*.exe
+*.dll
+*.dylib
+*.so
+*.a
+*.o
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# nimble
+nimbledeps/
+.nimble/
+*.nims.cfg
+
+# compiled binaries
+bin/
+build/
+dist/
+
+# testing
+tests/**/t*
+!tests/**/t*.nim
+*.gcda
+*.gcno
+*.info
+coverage/
+htmldocs/
 tests/tcontainer
 tests/tsmoke
+tests/tsnappychunks
+tools/iworkdump
+
+# debug symbols on macOS
+*.dSYM/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.DocumentRevisions-V100
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+Icon?
+
+# editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# env / secrets
+.env
+.env.local

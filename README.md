@@ -14,9 +14,11 @@ Pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers d
   (`readEntry`), plus `metadataPlist` for `Metadata/Properties.plist`
 - Legacy pre-2013 documents (`index.xml` / `index.apxl`) are detected and
   rejected with `IworkUnsupportedError`
+- Decoding the `.iwa` snappy chunk format via `decodeIwa` (raw snappy blocks,
+  no stream framing), with `IworkFormatError` on malformed input
 
-Not yet implemented: snappy decompression of `.iwa` archives, protobuf
-decoding, or any higher-level document model.
+Not yet implemented: protobuf decoding of the decompressed streams, or any
+higher-level document model.
 
 ## Notable Updates
 
@@ -25,6 +27,18 @@ decoding, or any higher-level document model.
 ## Quick start
 
 ### Examples
+
+`tools/iworkdump.nim` is a small debug CLI built on the library:
+
+```sh
+nim c tools/iworkdump.nim
+
+# list iwa entries with compressed/decompressed sizes
+tools/iworkdump ls deck.key
+
+# write an entry's decompressed stream to stdout
+tools/iworkdump cat deck.key Index/Document.iwa > document.bin
+```
 
 ## Supported File Types
 

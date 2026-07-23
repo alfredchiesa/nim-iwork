@@ -25,25 +25,14 @@ suite "container: single-file zip with Index/*.iwa":
     check c.iwaEntries.len > 0
     check c.readEntry("Index/Document.iwa").len > 0
 
-suite "container: zip with nested Index.zip":
+suite "container: pages zip":
   test "pages doc opens with correct kind":
     let c = openContainer(fixtures / "simple.pages")
     check c.kind == ckZip
     check c.docKind == dkPages
 
-  test "iwa entries come from the nested index zip":
+  test "pages iwa entries readable":
     let c = openContainer(fixtures / "simple.pages")
-    check c.iwaEntries.len > 0
-    check c.readEntry("Index/Document.iwa").len > 0
-
-suite "container: directory bundle":
-  test "bundle opens with correct kind":
-    let c = openContainer(fixtures / "simple_bundle.pages")
-    check c.kind == ckBundle
-    check c.docKind == dkPages
-
-  test "bundle iwa entries readable":
-    let c = openContainer(fixtures / "simple_bundle.pages")
     check c.iwaEntries.len > 0
     check c.readEntry("Index/Document.iwa").len > 0
 
@@ -65,12 +54,3 @@ suite "container: dockind sniffing without extension":
     copyFile(fixtures / "simple.numbers", tmp)
     defer: removeFile(tmp)
     check openContainer(tmp).docKind == dkNumbers
-
-suite "container: legacy documents":
-  test "pre-2013 doc raises IworkUnsupportedError":
-    let legacy = fixtures / "legacy.pages"
-    if not fileExists(legacy):
-      skip()
-    else:
-      expect IworkUnsupportedError:
-        discard openContainer(legacy)

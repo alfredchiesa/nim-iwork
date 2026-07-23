@@ -21,15 +21,33 @@ Pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers d
 - The full object graph: `buildIndex` parses every `.iwa` into a
   `Table[uint64, IworkObject]`, and `deref` / `derefAll` resolve
   `TSP.Reference` chains between objects
+- Plain text extraction: `openDocument(path)` and `doc.plainText()` pull
+  every text storage's content, with attachment placeholders stripped and
+  line/paragraph separators normalized to newlines
 
-Not yet implemented: typed archives on top of the generic tree, text
-extraction, or any higher-level document model.
+Not yet implemented: typed archives (slides, sheets, tables) on top of the
+generic tree, or cell value extraction for numbers.
 
 ## Notable Updates
 
 ## Install
 
 ## Quick start
+
+```nim
+import iwork
+
+let doc = openDocument("deck.key")  # auto-detects keynote/pages/numbers
+echo doc.kind                       # dkKeynote
+echo doc.plainText()                # all text, joined with newlines
+```
+
+Or from the command line via the bundled example:
+
+```sh
+nim c examples/extract_text.nim
+examples/extract_text report.pages
+```
 
 ### Examples
 

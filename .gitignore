@@ -64,3 +64,5 @@ Icon?
 .env
 .env.localtests/twire
 tests/tobjects
+tests/ttext
+examples/extract_text

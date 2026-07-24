@@ -24,9 +24,14 @@ Pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers d
 - Plain text extraction: `openDocument(path)` and `doc.plainText()` pull
   every text storage's content, with attachment placeholders stripped and
   line/paragraph separators normalized to newlines
+- Structured keynote reading: `doc.slides` walks the show's slide tree into
+  `Slide` objects with `title`, `body`, `presenterNotes`, and `isSkipped`
+- Structured numbers reading: `doc.sheets` / `doc.tables` decode the binary
+  cell storage into typed `CellValue`s (text, number, bool, date, duration,
+  formula, error), with `toCsv` for quick export
 
-Not yet implemented: typed archives (slides, sheets, tables) on top of the
-generic tree, or cell value extraction for numbers.
+Not yet implemented: structured pages sections, formula ast decoding
+(formula cells surface their cached display value), or rich text cells.
 
 ## Notable Updates
 
@@ -40,6 +45,19 @@ import iwork
 let doc = openDocument("deck.key")  # auto-detects keynote/pages/numbers
 echo doc.kind                       # dkKeynote
 echo doc.plainText()                # all text, joined with newlines
+
+for slide in doc.slides:            # keynote only
+  echo slide.index, ": ", slide.title
+  for line in slide.body:
+    echo "  ", line
+  if slide.presenterNotes.len > 0:
+    echo "  notes: ", slide.presenterNotes
+
+let book = openDocument("budget.numbers")
+for sheet in book.sheets:           # numbers only
+  for table in sheet.tables:
+    echo sheet.name, " / ", table.name
+    echo toCsv(table)
 ```
 
 Or from the command line via the bundled example:

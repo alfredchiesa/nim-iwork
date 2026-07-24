@@ -9,6 +9,10 @@ const
   knShowArchive* = 2'u32        ## kn.showarchive, deck-level info
   knSlideNodeArchive* = 4'u32   ## kn.slidenodearchive, slide tree node
   knSlideArchive* = 5'u32       ## kn.slidearchive, one slide's content
+  knPlaceholderArchive* = 7'u32 ## kn.placeholderarchive, title/body placeholder
+                                ## (source: keynote-parser proto mapping)
+  knNoteArchive* = 15'u32       ## kn.notearchive, presenter notes
+                                ## (source: keynote-parser proto mapping)
 
   # pages (tp)
   tpDocumentArchive* = 10000'u32 ## tp.documentarchive, the root object
@@ -19,6 +23,8 @@ const
 
   # shared text engine (tswp), same ids across all three apps
   tswpStorageArchive* = 2001'u32 ## tswp.storagearchive, a text storage
+  tswpShapeInfoArchive* = 2011'u32 ## tswp.shapeinfoarchive, a text shape
+                                   ## (source: keynote-parser proto mapping)
 
   # shared table engine (tst), same ids across all three apps
   tstTableInfoArchive* = 6000'u32  ## tst.tableinfoarchive, table drawable

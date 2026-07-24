@@ -24,6 +24,11 @@ func cleanRun(run: string): string =
   result = result.replace("\r\n", "\n")
   result = result.replace("\r", "\n")
 
+proc storageText*(obj: IworkObject): string =
+  ## the cleaned text of one tswp.storagearchive object: runs in field 3
+  ## are consecutive pieces of one stream, so they join without separators
+  cleanRun(obj.message.getRepeatedString(3).join(""))
+
 proc extractText*(idx: ObjectIndex): seq[string] =
   ## cleaned text of every storage archive in the index, sorted by
   ## object id so output is deterministic
@@ -35,8 +40,6 @@ proc extractText*(idx: ObjectIndex): seq[string] =
       ids.add(obj.id)
   ids.sort()
   for id in ids:
-    # runs in field 3 are consecutive pieces of one text stream,
-    # so they concatenate without separators
-    let cleaned = cleanRun(idx.objects[id].message.getRepeatedString(3).join(""))
+    let cleaned = storageText(idx.objects[id])
     if cleaned.strip.len > 0:
       result.add(cleaned)

@@ -1,9 +1,11 @@
 # pure nim reader for apple keynote, pages, and numbers documents
 
 import std/[options, strutils]
-import iwork/[container, errors, objects, snappychunks, text, typemaps, wire]
+import iwork/[cellstorage, container, errors, keynote, numbers, objects,
+  snappychunks, text, typemaps, wire]
 
-export container, errors, objects, snappychunks, text, typemaps, wire
+export cellstorage, container, errors, keynote, numbers, objects,
+  snappychunks, text, typemaps, wire
 
 type
   IworkDocument* = ref object
@@ -29,3 +31,24 @@ proc index*(doc: IworkDocument): ObjectIndex =
 proc plainText*(doc: IworkDocument): string =
   ## all document text, storages joined with newlines
   doc.index.extractText.join("\n")
+
+proc slides*(doc: IworkDocument): seq[Slide] =
+  ## the presented slides of a keynote document, in deck order;
+  ## raises IworkError for pages and numbers documents
+  if doc.kind != dkKeynote:
+    raise newException(IworkError,
+      "slides() only works on keynote documents, this is a " & $doc.kind)
+  doc.index.keynoteSlides
+
+proc sheets*(doc: IworkDocument): seq[Sheet] =
+  ## the sheets of a numbers document with their decoded tables;
+  ## raises IworkError for keynote and pages documents
+  if doc.kind != dkNumbers:
+    raise newException(IworkError,
+      "sheets() only works on numbers documents, this is a " & $doc.kind)
+  doc.index.numbersSheets
+
+proc tables*(doc: IworkDocument): seq[numbers.Table] =
+  ## every table across all sheets, flattened in sheet order
+  for sheet in doc.sheets:
+    result.add(sheet.tables)

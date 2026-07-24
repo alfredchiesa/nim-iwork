@@ -1,8 +1,9 @@
 # iwork
 
-A pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers documents
+[![CI](https://github.com/alfredchiesa/nim-iwork/actions/workflows/ci.yml/badge.svg)](https://github.com/alfredchiesa/nim-iwork/actions/workflows/ci.yml)
+[![Docs](https://github.com/alfredchiesa/nim-iwork/actions/workflows/docs.yml/badge.svg)](https://alfredchiesa.github.io/nim-iwork/)
 
-**API docs:** [alfredchiesa.github.io/nim-iwork](https://alfredchiesa.github.io/nim-iwork/)
+A pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers documents
 
 ## What works so far
 
@@ -131,6 +132,7 @@ bundle):
 | Numbers | `.numbers` | yes | sheets, tables, typed cell values, csv export |
 | iWork '09 and earlier | `.key`, `.pages`, `.numbers` | no | pre-2013 XML format (`index.xml` / `index.apxl`) - detected and rejected with `IworkUnsupportedError` |
 | Password-protected documents | any | no | encrypted containers can't be read |
+| Writing / creating documents | any | no | this is a reader, and writing isn't planned |
 
 Within supported documents, a few cell/content flavors are partial:
 
@@ -140,6 +142,27 @@ Within supported documents, a few cell/content flavors are partial:
 | formula cells | cached display value; the formula itself shows as `=?` when no cached value exists |
 | rich text cells | decode as empty text for now |
 | images, movies, charts | skipped (text extraction only) |
+
+## How the format works
+
+The short version of what this library actually parses:
+
+1. an iwork document is a zip (or a directory bundle) holding
+   `Index/*.iwa` files plus metadata and media
+2. each `.iwa` is a sequence of chunks: a tiny 4-byte header, then a raw
+   snappy block (no framing, no crc)
+3. the decompressed stream is protobuf: repeated `[varint length,
+   archive info, object payload]` records, each carrying an object id
+   and a per-application type number
+4. objects reference each other by id, forming one big graph - document
+   to show to slides in keynote, document to sheets to tables in numbers
+5. numbers cells are one more layer down: a custom binary record format
+   packed inside the tile protobufs, with a flags word saying which
+   fields are present
+
+The type and field numbers aren't published by Apple - they come from
+the community reverse-engineering credited below, re-verified against
+real documents as this library was built.
 
 ## Testing
 
@@ -165,6 +188,55 @@ nimble docs && open htmldocs/index.html
 for f in examples/*.nim tools/*.nim; do nim c --hints:off "$f"; done
 ```
 
+## Publishing
+
+Releases are automated: conventional commits on main feed
+[release-please](https://github.com/googleapis/release-please), which
+keeps a rolling release PR. Merging that PR bumps the version, updates
+`CHANGELOG.md`, tags `vX.Y.Z`, and publishes a github release. Nimble
+installs by git tag, so once the package is registered every merged
+release PR is automatically live.
+
+The registration itself is a one-time step:
+
+1. create a github personal access token with `repo` scope and export it
+   as `GITHUB_TOKEN` (or let the prompt ask for it)
+2. run `nimble publish` from the repo root - it forks
+   [nim-lang/packages](https://github.com/nim-lang/packages), adds the
+   iwork entry to `packages.json`, and opens the PR for you. prefer doing
+   it by hand? fork nim-lang/packages and add:
+
+   ```json
+   {
+     "name": "iwork",
+     "url": "https://github.com/alfredchiesa/nim-iwork",
+     "method": "git",
+     "tags": ["iwork", "keynote", "pages", "numbers", "apple", "parser"],
+     "description": "Pure Nim reader for Apple Keynote, Pages, and Numbers documents",
+     "license": "MIT",
+     "web": "https://github.com/alfredchiesa/nim-iwork"
+   }
+   ```
+
+3. once that PR merges, `nimble install iwork` resolves to the latest git
+   tag and the package shows up on
+   [nimble.directory](https://nimble.directory/) with a link to the docs
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the commit-to-version-bump
+rules.
+
+## Credits
+
+The iwork format is undocumented; this library stands on the
+reverse-engineering work of:
+
+- [keynote-parser](https://github.com/psobot/keynote-parser) - the
+  reference for keynote type and field numbers
+- [numbers-parser](https://github.com/masaccio/numbers-parser) - the
+  reference for the numbers cell storage format
+- [iWorkFileFormat](https://github.com/obriensp/iWorkFileFormat) - the
+  original deep dive into the container, snappy, and protobuf layers
+
 ## Contributing
 
 Contributions, issues, and feature requests are all welcome! Found a bug or
@@ -172,4 +244,5 @@ have an idea? [Open an issue](https://github.com/alfredchiesa/nim-iwork/issues).
 PRs are appreciated too - for bigger changes, it's worth opening an issue first
 so we can talk it through. Commit messages follow
 [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
-`docs:`, ...), since releases are cut automatically from them.
+`docs:`, ...), since releases are cut automatically from them. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the details.

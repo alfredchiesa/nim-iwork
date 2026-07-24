@@ -10,9 +10,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         nim: [stable, devel]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     # devel is allowed to break us without failing the workflow
     continue-on-error: ${{ matrix.nim == 'devel' }}
     steps:

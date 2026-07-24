@@ -40,7 +40,7 @@ cells surface their cached display value) and rich text cells.
 
 ## Notable Updates
 
-- **v0.1.0** (2026-07-24) - first release: keynote slides, numbers tables
+- **v1.1.7** (2026-07-24) - first release: keynote slides, numbers tables
   with typed cells, pages body text, plain text extraction for all three
   formats, and the `iworkdump` debug CLI
 
@@ -59,7 +59,7 @@ nimble install https://github.com/alfredchiesa/nim-iwork
 Then in your project's `.nimble` file:
 
 ```nim
-requires "iwork >= 0.1.0"
+requires "iwork >= 1.1.7"
 ```
 
 ## Quick start

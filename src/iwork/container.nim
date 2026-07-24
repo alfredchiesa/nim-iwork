@@ -10,16 +10,21 @@ export errors
 
 type
   ContainerKind* = enum
+    ## physical layout of a document on disk
     ckZip    ## single-file zip document
     ckBundle ## directory bundle
 
   DocKind* = enum
-    dkKeynote, dkPages, dkNumbers
+    ## which application a document belongs to
+    dkKeynote ## a .key presentation
+    dkPages   ## a .pages word processing document
+    dkNumbers ## a .numbers spreadsheet
 
   IworkContainer* = ref object
-    path*: string
-    kind*: ContainerKind
-    docKind*: DocKind
+    ## an opened document container with its entries loaded
+    path*: string        ## the path the container was opened from
+    kind*: ContainerKind ## zip file or directory bundle
+    docKind*: DocKind    ## detected application
     entries: OrderedTable[string, string]
 
 const metadataPlistPath = "Metadata/Properties.plist"

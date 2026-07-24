@@ -1,21 +1,43 @@
-# pure nim reader for apple keynote, pages, and numbers documents
+## pure nim reader for apple keynote, pages, and numbers documents.
+##
+## everything a user needs is importable from plain `import iwork`:
+## open a document with `openDocument`, then use `plainText` on any
+## kind, `slides` for keynote, `sheets`/`tables` for numbers, and
+## `bodyText` for pages.
+
+runnableExamples "-r:off":
+  let doc = openDocument("deck.key") # auto-detects keynote/pages/numbers
+  echo doc.kind                      # dkKeynote
+  echo doc.plainText()               # all text, joined with newlines
+
+  for slide in doc.slides:           # keynote only
+    echo slide.title, " | ", slide.presenterNotes
+
+  let book = openDocument("budget.numbers")
+  for table in book.tables:          # numbers only
+    for row in table.rows:
+      for cell in row:
+        echo cell.asString
 
 import std/[options, strutils]
 import iwork/[cellstorage, container, errors, keynote, numbers, objects,
-  snappychunks, text, typemaps, wire]
+  pages, snappychunks, text, typemaps, wire]
 
-export cellstorage, container, errors, keynote, numbers, objects,
+export cellstorage, container, errors, keynote, numbers, objects, pages,
   snappychunks, text, typemaps, wire
 
 type
   IworkDocument* = ref object
     ## an opened iwork document with a lazily built object index
-    container*: IworkContainer
+    container*: IworkContainer ## the underlying container, for low-level use
     indexCache: Option[ObjectIndex]
 
 proc openDocument*(path: string): IworkDocument =
   ## opens a keynote, pages, or numbers document,
   ## auto-detecting the application from extension or content
+  runnableExamples "-r:off":
+    let doc = openDocument("report.pages")
+    echo doc.kind # dkPages
   IworkDocument(container: openContainer(path))
 
 proc kind*(doc: IworkDocument): DocKind =
@@ -52,3 +74,11 @@ proc tables*(doc: IworkDocument): seq[numbers.Table] =
   ## every table across all sheets, flattened in sheet order
   for sheet in doc.sheets:
     result.add(sheet.tables)
+
+proc bodyText*(doc: IworkDocument): seq[string] =
+  ## the body paragraphs of a pages document, in order;
+  ## raises IworkError for keynote and numbers documents
+  if doc.kind != dkPages:
+    raise newException(IworkError,
+      "bodyText() only works on pages documents, this is a " & $doc.kind)
+  doc.index.pagesBodyText

@@ -1,6 +1,14 @@
-# structured numbers reading: tn.documentarchive -> sheets -> table
-# infos -> table models -> tiles -> decoded cell grids. field numbers
-# verified against real documents with numbers-parser as the reference.
+## structured numbers reading: tn.documentarchive -> sheets -> table
+## infos -> table models -> tiles -> decoded cell grids. field numbers
+## verified against real documents with numbers-parser as the reference.
+
+runnableExamples "-r:off":
+  import iwork
+  let book = openDocument("budget.numbers")
+  for sheet in book.sheets:
+    for table in sheet.tables:
+      echo sheet.name, " / ", table.name
+      echo toCsv(table)
 
 import std/[logging, options, strutils, tables]
 import ./cellstorage, ./errors, ./objects, ./typemaps, ./wire

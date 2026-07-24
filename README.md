@@ -2,6 +2,8 @@
 
 Pure [nim](https://nim-lang.org/) reader for Apple Keynote, Pages, and Numbers documents
 
+**API docs:** [alfredchiesa.github.io/nim-iwork](https://alfredchiesa.github.io/nim-iwork/)
+
 ## What works so far
 
 - Opening iWork 2013+ document containers via `openContainer(path)`:

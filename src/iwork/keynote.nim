@@ -1,7 +1,15 @@
-# structured keynote reading: walk kn.documentarchive -> show -> slide
-# tree -> per-slide archives and pull out titles, body text, and notes.
-# type and field numbers are sourced from the keynote-parser python
-# project and verified against real documents.
+## structured keynote reading: walk kn.documentarchive -> show -> slide
+## tree -> per-slide archives and pull out titles, body text, and notes.
+## type and field numbers are sourced from the keynote-parser python
+## project and verified against real documents.
+
+runnableExamples "-r:off":
+  import iwork
+  let doc = openDocument("deck.key")
+  for slide in doc.slides:
+    echo slide.index, ": ", slide.title
+    for line in slide.body:
+      echo "  ", line
 
 import std/[logging, options, strutils, tables]
 import ./errors, ./objects, ./text, ./typemaps, ./wire

@@ -11,3 +11,12 @@ srcDir        = "src"
 requires "nim >= 2.0.0"
 requires "zippy >= 0.10.0"
 requires "supersnappy >= 2.1.0"
+
+# docs: https://alfredchiesa.github.io/nim-iwork/
+
+task docs, "generate html docs into htmldocs/":
+  exec "nim doc --project --index:on --outdir:htmldocs " &
+    "--git.url:https://github.com/alfredchiesa/nim-iwork " &
+    "--git.commit:main src/iwork.nim"
+  # pages serves index.html at the site root
+  cpFile("htmldocs/iwork.html", "htmldocs/index.html")

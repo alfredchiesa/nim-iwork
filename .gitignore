@@ -68,3 +68,4 @@ tests/ttext
 examples/extract_text
 tests/tkeynote
 tests/tnumbers
+tests/tpages

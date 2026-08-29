@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/alfredchiesa/nim-iwork/compare/v1.1.7...v1.2.0) (2026-08-29)
+
+
+### Features
+
+* new `getText()` helper method that returns all document text in reading order ([42bc754](https://github.com/alfredchiesa/nim-iwork/commit/42bc754737b825f03a818ba7fb5b4a35226be378))
+
 ## 1.1.7 (2026-07-24)
 
 

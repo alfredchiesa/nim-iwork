@@ -14,9 +14,15 @@ none) and every on-disk layout works: plain zip, zip with a nested
 
 From there:
 
-- **Plain text from anything** - `doc.plainText()` pulls all text from any
-  of the three formats, with attachment placeholders stripped and line
-  breaks normalized
+- **All the text, in reading order** - `doc.getText()` returns everything
+  the document says, from any of the three formats: page headers and
+  footers, body paragraphs, slide titles and text boxes, presenter
+  notes, and table rows. `doc.textBlocks` gives the same thing as
+  labeled pieces (`tbHeader`, `tbBody`, `tbNotes`, ...) tagged with the
+  slide or sheet they came from
+- **Raw storage text** - `doc.plainText()` dumps every text storage in
+  object order instead, master slides and all, with attachment
+  placeholders stripped and line breaks normalized
 - **Keynote** - `doc.slides` gives you each slide's title, body text
   boxes, presenter notes, and skip flag, in deck order
 - **Numbers** - `doc.sheets` / `doc.tables` decode the binary cell storage
@@ -72,7 +78,10 @@ import iwork
 
 let doc = openDocument("tests/fixtures/simple.key")
 echo doc.kind                       # dkKeynote (auto-detected)
-echo doc.plainText()                # all text, joined with newlines
+echo doc.getText()                  # all text, in reading order
+
+for blk in doc.textBlocks:          # the same text, labeled
+  echo blk.section, " ", blk.kind, ": ", blk.text
 
 for slide in doc.slides:            # keynote only
   echo slide.index, ": ", slide.title

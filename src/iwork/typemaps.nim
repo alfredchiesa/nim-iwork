@@ -16,6 +16,12 @@ const
 
   # pages (tp)
   tpDocumentArchive* = 10000'u32 ## tp.documentarchive, the root object
+  tpSectionArchive* = 10011'u32  ## tp.sectionarchive, one document section
+                                 ## (verified against the pages templates)
+  tpHeadersFootersArchive* = 10143'u32 ## a section's header (field 1) and
+                                       ## footer (field 2) storages, three
+                                       ## slots each: left, center, right
+                                       ## (verified against the pages templates)
 
   # numbers (tn)
   tnDocumentArchive* = 1'u32    ## tn.documentarchive, the root object

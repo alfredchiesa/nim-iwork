@@ -45,3 +45,42 @@ suite "text: document api":
     let a = openDocument(fixtures / "simple.key").plainText()
     let b = openDocument(fixtures / "simple.key").plainText()
     check a == b
+
+suite "text: reading order":
+  test "keynote getText follows deck order and skips master text":
+    check openDocument(fixtures / "simple.key").getText() ==
+      "hello keynote\nfirst bullet\nsecond slide\nnote text here"
+
+  test "keynote blocks are labeled by slide":
+    let blocks = openDocument(fixtures / "simple.key").textBlocks
+    check blocks[0] == TextBlock(kind: tbTitle, section: "slide 1",
+      text: "hello keynote")
+    check blocks[^1] == TextBlock(kind: tbNotes, section: "slide 2",
+      text: "note text here")
+
+  test "pages getText keeps paragraphs in order":
+    let text = openDocument(fixtures / "simple.pages").getText()
+    check text.find("hello pages") < text.find("second paragraph")
+
+  test "numbers getText reaches text plainText can't":
+    # numbers keeps cell text in the binary cell storage, not in text
+    # storages, so the storage-level extraction sees none of it
+    let book = openDocument(fixtures / "rich.numbers")
+    check book.plainText().find("Mortgage") < 0
+    let text = book.getText()
+    check "Mortgage" in text            # a table cell
+    check "Total Net Worth" in text     # a table name
+    check "Liabilities" in text         # a sheet name
+    check "HOW TO USE" in text          # a text box on the sheet
+
+  test "numbers rows come out as tab-joined blocks":
+    let blocks = openDocument(fixtures / "simple.numbers").textBlocks
+    check TextBlock(kind: tbTableRow, section: "Sheet 1",
+      text: "a\tb\tC") in blocks
+
+  test "getText works on every kind and is deterministic":
+    for name in ["simple.key", "simple.pages", "simple.numbers",
+        "rich.key", "rich.numbers"]:
+      let doc = openDocument(fixtures / name)
+      check doc.getText().len > 0
+      check doc.getText() == openDocument(fixtures / name).getText()

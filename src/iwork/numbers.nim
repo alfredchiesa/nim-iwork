@@ -11,7 +11,7 @@ runnableExamples "-r:off":
       echo toCsv(table)
 
 import std/[logging, options, strutils, tables]
-import ./cellstorage, ./errors, ./objects, ./typemaps, ./wire
+import ./cellstorage, ./errors, ./objects, ./text, ./typemaps, ./wire
 
 type
   Table* = object
@@ -25,6 +25,8 @@ type
     ## one sheet and the tables on it
     name*: string
     tables*: seq[Table]
+    textBoxes*: seq[string] ## text of the sheet's text boxes, in
+                            ## drawable order
 
 const
   # tn.documentarchive field 1 = repeated sheet refs
@@ -34,6 +36,8 @@ const
   sheetDrawablesField = 2
   # tst.tableinfoarchive field 2 = table model ref
   infoModelField = 2
+  # tswp.shapeinfoarchive field 2 = the shape's text storage
+  shapeStorageField = 2
   # tst.tablemodelarchive: 4 = data store, 6 = rows, 7 = cols, 8 = name
   modelDataStoreField = 4
   modelRowsField = 6
@@ -120,11 +124,19 @@ proc numbersSheets*(idx: ObjectIndex): seq[Sheet] =
   for sheetObj in idx.derefAll(docArchive.message, docSheetsField):
     var sheet = Sheet(name: sheetObj.message.getString(sheetNameField).get(""))
     for drawable in idx.derefAll(sheetObj.message, sheetDrawablesField):
-      if drawable.msgType != tstTableInfoArchive:
-        continue
-      let model = idx.deref(drawable.message, infoModelField)
-      if model.isSome and model.get.msgType == tstTableModelArchive:
-        sheet.tables.add(buildTable(idx, model.get))
+      case drawable.msgType
+      of tstTableInfoArchive:
+        let model = idx.deref(drawable.message, infoModelField)
+        if model.isSome and model.get.msgType == tstTableModelArchive:
+          sheet.tables.add(buildTable(idx, model.get))
+      of tswpShapeInfoArchive:
+        let storage = idx.deref(drawable.message, shapeStorageField)
+        if storage.isSome and storage.get.msgType == tswpStorageArchive:
+          let cleaned = storageText(storage.get).strip
+          if cleaned.len > 0:
+            sheet.textBoxes.add(cleaned)
+      else:
+        discard
     result.add(sheet)
   debug "numbers: built ", result.len, " sheets"
 

@@ -1,14 +1,14 @@
 ## pure nim reader for apple keynote, pages, and numbers documents.
 ##
 ## everything a user needs is importable from plain `import iwork`:
-## open a document with `openDocument`, then use `plainText` on any
-## kind, `slides` for keynote, `sheets`/`tables` for numbers, and
-## `bodyText` for pages.
+## open a document with `openDocument`, then use `getText` on any kind,
+## `slides` for keynote, `sheets`/`tables` for numbers, and `bodyText`
+## for pages.
 
 runnableExamples "-r:off":
   let doc = openDocument("deck.key") # auto-detects keynote/pages/numbers
   echo doc.kind                      # dkKeynote
-  echo doc.plainText()               # all text, joined with newlines
+  echo doc.getText()                 # all text, in reading order
 
   for slide in doc.slides:           # keynote only
     echo slide.title, " | ", slide.presenterNotes
@@ -20,11 +20,11 @@ runnableExamples "-r:off":
         echo cell.asString
 
 import std/[options, strutils]
-import iwork/[cellstorage, container, errors, keynote, numbers, objects,
-  pages, snappychunks, text, typemaps, wire]
+import iwork/[cellstorage, container, doctext, errors, keynote, numbers,
+  objects, pages, snappychunks, text, typemaps, wire]
 
-export cellstorage, container, errors, keynote, numbers, objects, pages,
-  snappychunks, text, typemaps, wire
+export cellstorage, container, doctext, errors, keynote, numbers, objects,
+  pages, snappychunks, text, typemaps, wire
 
 type
   IworkDocument* = ref object
@@ -53,6 +53,31 @@ proc index*(doc: IworkDocument): ObjectIndex =
 proc plainText*(doc: IworkDocument): string =
   ## all document text, storages joined with newlines
   doc.index.extractText.join("\n")
+
+proc textBlocks*(doc: IworkDocument): seq[TextBlock] =
+  ## every piece of text in the document in reading order, each labeled
+  ## with what it is (header, body, footer, text box, notes, table row)
+  ## and which slide or sheet it came from
+  runnableExamples "-r:off":
+    let doc = openDocument("deck.key")
+    for blk in doc.textBlocks:
+      echo blk.section, " ", blk.kind, ": ", blk.text
+  doc.index.textBlocks(doc.kind)
+
+proc getText*(doc: IworkDocument): string =
+  ## all of the document's text in reading order - headers, body,
+  ## footers, text boxes, presenter notes and table rows - joined with
+  ## newlines. falls back to `plainText` for documents whose structure
+  ## doesn't decode, so there's always something to index
+  runnableExamples "-r:off":
+    echo openDocument("report.pages").getText()
+  var parts: seq[string]
+  try:
+    for blk in doc.textBlocks:
+      parts.add(blk.text)
+  except IworkFormatError:
+    return doc.plainText()
+  parts.join("\n")
 
 proc slides*(doc: IworkDocument): seq[Slide] =
   ## the presented slides of a keynote document, in deck order;

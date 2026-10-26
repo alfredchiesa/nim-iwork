@@ -36,6 +36,7 @@ tests/tcontainer
 tests/tsmoke
 tests/tsnappychunks
 tools/iworkdump
+/iworkextract
 
 # debug symbols on macOS
 *.dSYM/

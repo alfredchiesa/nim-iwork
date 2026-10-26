@@ -42,3 +42,12 @@ jobs:
             echo "compiling $f"
             nim c --hints:off "$f"
           done
+      # proves the nimble package installs the cli and still ships the library
+      - name: install and smoke test iworkextract
+        run: |
+          nimble install -y
+          "$HOME/.nimble/bin/iworkextract" --version
+          "$HOME/.nimble/bin/iworkextract" tests/fixtures/simple.pages
+          "$HOME/.nimble/bin/iworkextract" --json tests/fixtures/simple.key | python3 -m json.tool > /dev/null
+          "$HOME/.nimble/bin/iworkextract" --csv --sheet 1 --table 1 tests/fixtures/rich.numbers
+          ls "$HOME"/.nimble/pkgs2/iwork-*/iwork.nim

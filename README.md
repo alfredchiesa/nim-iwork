@@ -55,27 +55,46 @@ cells surface their cached display value) and rich text cells.
 
 ## Notable Updates
 
+- **Unreleased (on main)** - the `iworkextract` CLI, `getTextReport()`
+  with extraction warnings and strict mode, wide-offset numbers tables,
+  and clearer container errors. These ship in the next release
+- **v1.2.0** (2026-08-29) - `getText()` returns all document text in
+  reading order
 - **v1.1.7** (2026-07-24) - first release: keynote slides, numbers tables
   with typed cells, pages body text, plain text extraction for all three
   formats, and the `iworkdump` debug CLI
 
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
 ## Install
 
-```sh
-nimble install iwork
-```
-
-Or straight from the repo:
+iwork isn't in the nimble package registry yet, so install it straight
+from the repo. This gets the latest tagged release:
 
 ```sh
 nimble install https://github.com/alfredchiesa/nim-iwork
 ```
 
-Then in your project's `.nimble` file:
+Then in your project's `.nimble` file (1.2.0 is the first release with
+`getText()`):
 
 ```nim
-requires "iwork >= 1.1.7"
+requires "https://github.com/alfredchiesa/nim-iwork >= 1.2.0"
 ```
+
+`getTextReport()` and the `iworkextract` CLI are on main but not in a
+tagged release yet. Until then, install from head:
+
+```sh
+nimble install "https://github.com/alfredchiesa/nim-iwork@#head"
+```
+
+```nim
+requires "https://github.com/alfredchiesa/nim-iwork#head"
+```
+
+Once the package is registered (see [Publishing](#publishing)),
+`nimble install iwork` and `requires "iwork >= 1.2.0"` will work too.
 
 ## Quick start
 
@@ -110,7 +129,44 @@ for paragraph in report.bodyText:   # pages only
   echo paragraph
 ```
 
-or from the CLI via the bundled example:
+## Command line: iworkextract
+
+Installing the package also installs `iworkextract` into nimble's bin
+directory (usually `~/.nimble/bin`), so you can pull text, json, or csv
+out of documents without writing any nim:
+
+```sh
+# all text, in reading order
+iworkextract tests/fixtures/simple.pages
+
+# several documents: each one starts with a "==> path <==" header
+iworkextract tests/fixtures/simple.pages tests/fixtures/simple.key
+
+# a json array with one object per document: kind, text, labeled blocks,
+# warnings, usedFallback, and for numbers every sheet's tables as rows
+iworkextract --json tests/fixtures/simple.key tests/fixtures/rich.numbers
+
+# one numbers table as csv on stdout, picked by name or 1-based number
+iworkextract --csv --sheet Assets --table "Liquid Assets" tests/fixtures/rich.numbers
+iworkextract --csv --sheet 2 --table 2 tests/fixtures/rich.numbers
+
+# every table to its own file, DIR/<document>_<sheet>_<table>.csv; the
+# paths written are printed, clashing names get -2, -3, ... and existing
+# files are left alone unless you pass --force
+iworkextract --csv -o out/ tests/fixtures/rich.numbers tests/fixtures/simple.numbers
+```
+
+Results go to stdout, warnings and errors to stderr. Known extraction
+gaps are reported as warnings, and `--strict` turns them into failures.
+A failed document doesn't stop the batch. The exit status is 0 when every
+document succeeded, 1 when any failed, and 2 for usage errors. Without
+`--output`, `--csv` needs exactly one document and one matching table.
+`iworkextract --help` has the details.
+
+From a checkout it builds with `nimble build` (or
+`nim c src/iworkextract.nim`). The bundled `examples/extract_text.nim`
+is a tiny version of the same thing, as a starting point for your own
+code:
 
 ```sh
 nim c examples/extract_text.nim
@@ -215,7 +271,9 @@ keeps a rolling release PR. Merging that PR bumps the version, updates
 installs by git tag, so once the package is registered every merged
 release PR is automatically live.
 
-The registration itself is a one-time step:
+The registration itself is a one-time step, and hasn't happened yet:
+as of 2026-10-26 there's no `iwork` entry in nim-lang/packages, which is
+why [Install](#install) uses the repo url.
 
 1. create a github personal access token with `repo` scope and export it
    as `GITHUB_TOKEN` (or let the prompt ask for it)
@@ -232,7 +290,8 @@ The registration itself is a one-time step:
      "tags": ["iwork", "keynote", "pages", "numbers", "apple", "parser"],
      "description": "Pure Nim reader for Apple Keynote, Pages, and Numbers documents",
      "license": "MIT",
-     "web": "https://github.com/alfredchiesa/nim-iwork"
+     "web": "https://github.com/alfredchiesa/nim-iwork",
+     "doc": "https://alfredchiesa.github.io/nim-iwork/"
    }
    ```
 

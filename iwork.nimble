@@ -5,6 +5,9 @@ author        = "Alfred Chiesa"
 description   = "Pure Nim reader for Apple Keynote, Pages, and Numbers documents"
 license       = "MIT"
 srcDir        = "src"
+# the extraction cli; installExt keeps the library sources installed too
+bin           = @["iworkextract"]
+installExt    = @["nim"]
 
 # Dependencies
 

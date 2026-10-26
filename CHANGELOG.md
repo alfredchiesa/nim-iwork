@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/alfredchiesa/nim-iwork/compare/v1.2.0...v1.3.0) (2026-10-26)
+
+
+### Features
+
+* adds better installation proc and new `iworkextract` ([2be48a1](https://github.com/alfredchiesa/nim-iwork/commit/2be48a1bb0e1528df8cbeaa2ba5287bd99da9091))
+* extract rich text cells, keynote/pages tables, and grouped shapes ([16ba843](https://github.com/alfredchiesa/nim-iwork/commit/16ba8431fa4a0aaa6b7b31a27a7a09dac05d46d7))
+
+
+### Bug Fixes
+
+* adds wide cell offset coverage, fixes container and incomplete extraction bugs ([2a4fee3](https://github.com/alfredchiesa/nim-iwork/commit/2a4fee3aec625f1a3dbbc7e547ce8fee73b4b154))
+
 ## [1.2.0](https://github.com/alfredchiesa/nim-iwork/compare/v1.1.7...v1.2.0) (2026-08-29)
 
 

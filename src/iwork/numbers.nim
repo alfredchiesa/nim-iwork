@@ -57,11 +57,13 @@ const
   entryKeyField = 1
   entryStringField = 3
   # tst.tile field 5 = repeated row infos: {1: row index in tile,
-  # 5: storage version, 6: cell storage buffer, 7: cell offsets}
+  # 5: storage version, 6: cell storage buffer, 7: cell offsets,
+  # 8: has_wide_offsets}
   tileRowInfosField = 5
   rowInfoIndexField = 1
   rowInfoBufferField = 6
   rowInfoOffsetsField = 7
+  rowInfoWideOffsetsField = 8
 
 proc stringTable(idx: ObjectIndex, dataStore: WireMessage): tables.Table[uint32, string] =
   # text cells store a key into the table's shared string list
@@ -74,7 +76,8 @@ proc stringTable(idx: ObjectIndex, dataStore: WireMessage): tables.Table[uint32,
     if key.isSome and s.isSome:
       result[uint32(key.get)] = s.get
 
-proc buildTable(idx: ObjectIndex, model: IworkObject): Table =
+proc buildTable(idx: ObjectIndex, model: IworkObject,
+    warnings: var seq[ExtractionWarning]): Table =
   let msg = model.message
   result.name = msg.getString(modelNameField).get("")
   result.numRows = int(msg.getUint(modelRowsField).get(0))
@@ -86,6 +89,8 @@ proc buildTable(idx: ObjectIndex, model: IworkObject): Table =
   let dataStore = msg.getMessage(modelDataStoreField)
   if dataStore.isNone:
     debug "table ", result.name, " has no data store"
+    warnings.add(ExtractionWarning(kind: ewMissingReference,
+      message: "table " & result.name & " has no data store"))
     return
   let strings = stringTable(idx, dataStore.get)
 
@@ -96,6 +101,8 @@ proc buildTable(idx: ObjectIndex, model: IworkObject): Table =
     let tileId = int(entry.getUint(tileEntryIdField).get(0))
     let tile = idx.deref(entry, tileEntryRefField)
     if tile.isNone:
+      warnings.add(ExtractionWarning(kind: ewMissingReference,
+        message: "table " & result.name & " is missing tile " & $tileId))
       continue
     for rowInfo in tile.get.message.getRepeatedMessage(tileRowInfosField):
       let rowIndex = tileId * tileRowStride +
@@ -104,15 +111,26 @@ proc buildTable(idx: ObjectIndex, model: IworkObject): Table =
         debug "tile row ", rowIndex, " outside table ", result.name
         continue
       let buf = rowInfo.getString(rowInfoBufferField).get("")
-      let offsets = cellOffsets(rowInfo.getString(rowInfoOffsetsField).get(""))
+      let offsets = cellOffsets(rowInfo.getString(rowInfoOffsetsField).get(""),
+        wide = rowInfo.getUint(rowInfoWideOffsetsField).get(0) != 0)
       for col in 0 ..< min(result.numCols, offsets.len):
         if offsets[col] < 0:
           continue # 0xffff, empty cell
         result.grid[rowIndex][col] = decodeCellAt(buf, offsets[col], strings)
   debug "built table ", result.name, ": ", result.numRows, "x", result.numCols
 
-proc numbersSheets*(idx: ObjectIndex): seq[Sheet] =
-  ## walks the numbers document into sheets with decoded tables
+proc lostRefs(msg: WireMessage, field, found: int, what: string,
+    warnings: var seq[ExtractionWarning]) =
+  # derefAll quietly drops refs it can't follow, so count what it lost
+  let lost = msg.getRepeatedString(field).len - found
+  if lost > 0:
+    warnings.add(ExtractionWarning(kind: ewMissingReference,
+      message: what & ": " & $lost & " references don't resolve"))
+
+proc numbersSheets*(idx: ObjectIndex,
+    warnings: var seq[ExtractionWarning]): seq[Sheet] =
+  ## like `numbersSheets`, also noting sheets, drawables, and table parts
+  ## that don't resolve in `warnings`
   var docArchive: IworkObject
   for obj in idx.objects.values:
     if obj.msgType == tnDocumentArchive:
@@ -121,14 +139,23 @@ proc numbersSheets*(idx: ObjectIndex): seq[Sheet] =
   if docArchive.isNil:
     raise newException(IworkFormatError,
       "no tn.documentarchive object in document")
-  for sheetObj in idx.derefAll(docArchive.message, docSheetsField):
+  let sheetObjs = idx.derefAll(docArchive.message, docSheetsField)
+  lostRefs(docArchive.message, docSheetsField, sheetObjs.len,
+    "document sheets", warnings)
+  for sheetObj in sheetObjs:
     var sheet = Sheet(name: sheetObj.message.getString(sheetNameField).get(""))
-    for drawable in idx.derefAll(sheetObj.message, sheetDrawablesField):
+    let drawables = idx.derefAll(sheetObj.message, sheetDrawablesField)
+    lostRefs(sheetObj.message, sheetDrawablesField, drawables.len,
+      "sheet " & sheet.name & " drawables", warnings)
+    for drawable in drawables:
       case drawable.msgType
       of tstTableInfoArchive:
         let model = idx.deref(drawable.message, infoModelField)
         if model.isSome and model.get.msgType == tstTableModelArchive:
-          sheet.tables.add(buildTable(idx, model.get))
+          sheet.tables.add(buildTable(idx, model.get, warnings))
+        else:
+          warnings.add(ExtractionWarning(kind: ewMissingReference,
+            message: "a table on sheet " & sheet.name & " has no table model"))
       of tswpShapeInfoArchive:
         let storage = idx.deref(drawable.message, shapeStorageField)
         if storage.isSome and storage.get.msgType == tswpStorageArchive:
@@ -139,6 +166,11 @@ proc numbersSheets*(idx: ObjectIndex): seq[Sheet] =
         discard
     result.add(sheet)
   debug "numbers: built ", result.len, " sheets"
+
+proc numbersSheets*(idx: ObjectIndex): seq[Sheet] =
+  ## walks the numbers document into sheets with decoded tables
+  var warnings: seq[ExtractionWarning]
+  idx.numbersSheets(warnings)
 
 proc cell*(t: Table, row, col: int): CellValue =
   ## the decoded value at a 0-based row/column position

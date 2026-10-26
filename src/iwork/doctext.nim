@@ -10,7 +10,8 @@ runnableExamples "-r:off":
     echo blk.kind, " ", blk.section, ": ", blk.text
 
 import std/strutils
-import ./cellstorage, ./container, ./keynote, ./numbers, ./objects, ./pages
+import ./cellstorage, ./container, ./errors, ./keynote, ./numbers, ./objects,
+  ./pages
 
 type
   TextBlockKind* = enum
@@ -36,30 +37,33 @@ proc add(blocks: var seq[TextBlock], kind: TextBlockKind,
   if trimmed.len > 0:
     blocks.add(TextBlock(kind: kind, section: section, text: trimmed))
 
-proc keynoteBlocks(idx: ObjectIndex): seq[TextBlock] =
-  for slide in idx.keynoteSlides:
+proc keynoteBlocks(idx: ObjectIndex,
+    warnings: var seq[ExtractionWarning]): seq[TextBlock] =
+  for slide in idx.keynoteSlides(warnings):
     let section = "slide " & $slide.index
     result.add(tbTitle, section, slide.title)
     for body in slide.body:
       result.add(tbBody, section, body)
     result.add(tbNotes, section, slide.presenterNotes)
 
-proc pagesBlocks(idx: ObjectIndex): seq[TextBlock] =
+proc pagesBlocks(idx: ObjectIndex,
+    warnings: var seq[ExtractionWarning]): seq[TextBlock] =
   # headers sit above the body and footers below it on every page, so
   # that's the order they're reported in; floating text boxes have no
   # place in the body flow and come last
   let hf = idx.pagesHeadersFooters
   for header in hf.headers:
     result.add(tbHeader, "", header)
-  for paragraph in idx.pagesBodyText:
+  for paragraph in idx.pagesBodyText(warnings):
     result.add(tbBody, "", paragraph)
   for footer in hf.footers:
     result.add(tbFooter, "", footer)
   for box in idx.pagesTextBoxes:
     result.add(tbTextBox, "", box)
 
-proc numbersBlocks(idx: ObjectIndex): seq[TextBlock] =
-  for sheet in idx.numbersSheets:
+proc numbersBlocks(idx: ObjectIndex,
+    warnings: var seq[ExtractionWarning]): seq[TextBlock] =
+  for sheet in idx.numbersSheets(warnings):
     result.add(tbTitle, sheet.name, sheet.name)
     for box in sheet.textBoxes:
       result.add(tbTextBox, sheet.name, box)
@@ -71,9 +75,15 @@ proc numbersBlocks(idx: ObjectIndex): seq[TextBlock] =
           cells.add(value.asString)
         result.add(tbTableRow, sheet.name, cells.join("\t"))
 
+proc textBlocks*(idx: ObjectIndex, kind: DocKind,
+    warnings: var seq[ExtractionWarning]): seq[TextBlock] =
+  ## like `textBlocks`, also collecting the known gaps in `warnings`
+  case kind
+  of dkKeynote: keynoteBlocks(idx, warnings)
+  of dkPages: pagesBlocks(idx, warnings)
+  of dkNumbers: numbersBlocks(idx, warnings)
+
 proc textBlocks*(idx: ObjectIndex, kind: DocKind): seq[TextBlock] =
   ## every block of text in the document, in reading order
-  case kind
-  of dkKeynote: keynoteBlocks(idx)
-  of dkPages: pagesBlocks(idx)
-  of dkNumbers: numbersBlocks(idx)
+  var warnings: seq[ExtractionWarning]
+  idx.textBlocks(kind, warnings)

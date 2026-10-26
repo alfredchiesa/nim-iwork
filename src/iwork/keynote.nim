@@ -70,11 +70,14 @@ proc noteText(idx: ObjectIndex, slide: IworkObject): string =
     if storage.isSome and storage.get.msgType == tswpStorageArchive:
       result = storageText(storage.get).strip(leading = false, chars = {'\n'})
 
-proc buildSlide(idx: ObjectIndex, node: IworkObject, index: int): Slide =
+proc buildSlide(idx: ObjectIndex, node: IworkObject, index: int,
+    warnings: var seq[ExtractionWarning]): Slide =
   result.index = index
   result.isSkipped = node.message.getUint(nodeIsSkippedField).get(0) == 1
   let slide = idx.deref(node.message, nodeSlideField)
   if slide.isNone:
+    warnings.add(ExtractionWarning(kind: ewMissingReference,
+      message: "slide " & $index & " has no slide archive"))
     return
   let titlePlaceholder = idx.deref(slide.get.message, slideTitleField)
 
@@ -105,8 +108,10 @@ proc buildSlide(idx: ObjectIndex, node: IworkObject, index: int): Slide =
 
   result.presenterNotes = noteText(idx, slide.get)
 
-proc keynoteSlides*(idx: ObjectIndex): seq[Slide] =
-  ## walks the show's slide tree into slide objects, in deck order
+proc keynoteSlides*(idx: ObjectIndex,
+    warnings: var seq[ExtractionWarning]): seq[Slide] =
+  ## like `keynoteSlides`, also noting slides that don't resolve in
+  ## `warnings`
   var docArchive: IworkObject
   for obj in idx.objects.values:
     if obj.msgType == knDocumentArchive:
@@ -124,6 +129,17 @@ proc keynoteSlides*(idx: ObjectIndex): seq[Slide] =
     raise newException(IworkFormatError,
       "kn.showarchive has no slide tree")
   let nodes = idx.derefAll(slideTree.get, slideTreeNodesField)
+  # derefAll quietly drops refs it can't follow, so count what it lost
+  let lost = slideTree.get.getRepeatedString(slideTreeNodesField).len -
+    nodes.len
+  if lost > 0:
+    warnings.add(ExtractionWarning(kind: ewMissingReference,
+      message: "slide tree: " & $lost & " references don't resolve"))
   for i, node in nodes:
-    result.add(buildSlide(idx, node, i + 1))
+    result.add(buildSlide(idx, node, i + 1, warnings))
   debug "keynote: built ", result.len, " slides"
+
+proc keynoteSlides*(idx: ObjectIndex): seq[Slide] =
+  ## walks the show's slide tree into slide objects, in deck order
+  var warnings: seq[ExtractionWarning]
+  idx.keynoteSlides(warnings)

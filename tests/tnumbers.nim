@@ -1,6 +1,7 @@
 # tests for numbers sheet/table/cell reading against real fixtures
-import std/[os, tables, times, unittest]
+import std/[math, os, strutils, tables, times, unittest]
 import iwork
+import ./iwabuild
 
 const fixtures = currentSourcePath().parentDir / "fixtures"
 
@@ -121,6 +122,164 @@ suite "numbers: cell record decoding":
   test "truncated record becomes an error value, not a crash":
     let v = decodeCellAt("\x05\x03", 0, noStrings)
     check v.kind == ckError
+
+proc d128(coefficient: uint64, exponent: int, highBit = false,
+    negative = false): string =
+  # decimal128 as numbers writes it: coefficient in bytes 0-13 plus the
+  # low bit of byte 14, then a 14-bit exponent biased by 0x1820 and a sign
+  result = newString(16)
+  for i in 0 ..< 8:
+    result[i] = char((coefficient shr (i * 8)) and 0xff)
+  let biased = exponent + 0x1820
+  result[14] = char(((biased and 0x7f) shl 1) or ord(highBit))
+  result[15] = char((biased shr 7) or (if negative: 0x80 else: 0))
+
+suite "numbers: decimal128 cells":
+  let noStrings = initTable[uint32, string]()
+
+  test "ordinary coefficients decode":
+    check decodeCellAt(record(2, 0x1, d128(337500, 0)), 0,
+      noStrings).number == 337500.0
+    check almostEqual(decodeCellAt(record(2, 0x1, d128(12345, -2)), 0,
+      noStrings).number, 123.45)
+    check decodeCellAt(record(2, 0x1, d128(42, 3, negative = true)), 0,
+      noStrings).number == -42000.0
+
+  test "the coefficient's high bit is worth 2^112":
+    let v = decodeCellAt(record(2, 0x1, d128(0, 0, highBit = true)), 0,
+      noStrings)
+    check v.kind == ckNumber
+    check v.number == pow(2.0, 112)
+    let w = decodeCellAt(record(2, 0x1, d128(0, -30, highBit = true)), 0,
+      noStrings)
+    check almostEqual(w.number, pow(2.0, 112) * 1e-30)
+
+suite "numbers: cell offsets":
+  test "ordinary offsets are byte offsets":
+    check cellOffsets("\x00\x00\x10\x00\x24\x00") == @[0, 16, 36]
+
+  test "wide offsets count 4-byte units":
+    check cellOffsets("\x00\x00\x04\x00\x09\x00", wide = true) == @[0, 16, 36]
+
+  test "0xffff stays the empty-cell sentinel either way":
+    check cellOffsets("\xff\xff\x04\x00") == @[-1, 4]
+    check cellOffsets("\xff\xff\x04\x00", wide = true) == @[-1, 16]
+
+proc textCell(id: uint32): string = record(3, 0x8, u32(id))
+
+proc rowInfo(tileRow: int, cells: seq[string], wide: bool): string =
+  # "" is an empty cell; every record is a multiple of 4 bytes long, so
+  # wide offsets can address them all
+  var buf, offsets: string
+  for c in cells:
+    var o = 0xffff
+    if c.len > 0:
+      o = if wide: buf.len div 4 else: buf.len
+      buf.add(c)
+    offsets.add(char(o and 0xff) & char(o shr 8))
+  pbUint(1, uint64(tileRow)) & pbBytes(6, buf) & pbBytes(7, offsets) &
+    (if wide: pbUint(8, 1) else: "")
+
+proc writeSyntheticBook(dir: string, dropSecondTile = false) =
+  # one 257x3 table split over two 256-row tiles: row 0 uses ordinary
+  # offsets, rows 255 and 256 sit either side of the tile boundary and
+  # use wide ones
+  var strings: string
+  for (key, s) in [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")]:
+    strings.add(pbBytes(3, pbUint(1, uint64(key)) & pbBytes(3, s)))
+  let tile0 =
+    pbBytes(5, rowInfo(0, @[textCell(1), "", record(10, 0x2, f64(2.5))],
+      wide = false)) &
+    pbBytes(5, rowInfo(255, @["", textCell(2), textCell(3)], wide = true))
+  let tile1 =
+    pbBytes(5, rowInfo(0, @[textCell(4), textCell(5), ""], wide = true))
+  let tileStorage =
+    pbBytes(1, pbUint(1, 0) & pbRef(2, 5)) &
+    pbBytes(1, pbUint(1, 1) & pbRef(2, if dropSecondTile: 99 else: 6))
+  let model = pbBytes(4, pbBytes(3, tileStorage) & pbRef(4, 7)) &
+    pbUint(6, 257) & pbUint(7, 3) & pbBytes(8, "T")
+  writeBundle(dir,
+    iwaObject(1, tnDocumentArchive, pbRef(1, 2)) &
+    iwaObject(2, tnSheetArchive, pbBytes(1, "S") & pbRef(2, 3)) &
+    iwaObject(3, tstTableInfoArchive, pbRef(2, 4)) &
+    iwaObject(4, tstTableModelArchive, model) &
+    iwaObject(5, tstTileArchive, tile0) &
+    iwaObject(6, tstTileArchive, tile1) &
+    iwaObject(7, tstTableDataList, strings))
+
+suite "numbers: synthetic tiles and offsets":
+  let dir = getTempDir() / "iwork_synth_tiles.numbers"
+  removeDir(dir)
+  writeSyntheticBook(dir)
+  let t = openDocument(dir).tables[0]
+
+  test "ordinary offsets decode, empty cells stay empty":
+    check t.cell(0, 0).text == "a"
+    check t.cell(0, 1).kind == ckEmpty
+    check t.cell(0, 2).number == 2.5
+
+  test "wide offsets decode on the last row of a tile":
+    check t.cell(255, 0).kind == ckEmpty
+    check t.cell(255, 1).text == "b"
+    check t.cell(255, 2).text == "c"
+
+  test "wide offsets decode on the first row of the next tile":
+    check t.cell(256, 0).text == "d"
+    check t.cell(256, 1).text == "e"
+    check t.cell(256, 2).kind == ckEmpty
+
+  test "rows without a row info are empty":
+    check t.cell(1, 0).kind == ckEmpty
+    check t.cell(254, 2).kind == ckEmpty
+
+  test "a missing tile is reported, the rest still decodes":
+    let broken = getTempDir() / "iwork_synth_missing_tile.numbers"
+    removeDir(broken)
+    writeSyntheticBook(broken, dropSecondTile = true)
+    defer: removeDir(broken)
+    let doc = openDocument(broken)
+    check doc.tables[0].cell(255, 2).text == "c"
+    check doc.tables[0].cell(256, 0).kind == ckEmpty
+    let report = doc.getTextReport()
+    check report.warnings.len == 1
+    check report.warnings[0].kind == ewMissingReference
+    check not report.usedFallback
+    check "b\tc" in report.text.splitLines
+
+  removeDir(dir)
+
+suite "numbers: numbers-parser large fixtures":
+  # upstream fixtures with expectations from numbers-parser's
+  # tests/test_large.py, see fixtures/NOTICE-numbers-parser.txt
+  proc textOrEmpty(v: CellValue): string =
+    check v.kind in {ckText, ckEmpty}
+    if v.kind == ckText: v.text else: ""
+
+  test "600-row and 600-column tables decode every cell":
+    let doc = openDocument(fixtures / "numbers-parser-test-3.numbers")
+    check doc.sheets[0].name == "Sheet_1"
+    let tall = doc.sheets[0].tables[0]
+    check tall.numRows == 600
+    check tall.numCols == 1
+    for r in 0 ..< 600:
+      check tall.cell(r, 0).textOrEmpty == "ROW" & $(r + 1)
+    check doc.sheets[1].name == "Sheet_2"
+    let wide = doc.sheets[1].tables[0]
+    check wide.numRows == 1
+    check wide.numCols == 600
+    for c in 0 ..< 600:
+      check wide.cell(0, c).textOrEmpty == "COLUMN" & $(c + 1)
+
+  test "90x270 sparse table decodes every cell":
+    let t = openDocument(fixtures / "numbers-parser-test-6.numbers").tables[0]
+    check t.numRows == 90
+    check t.numCols == 270
+    for r in 0 ..< 90:
+      for c in 0 ..< 270:
+        let want =
+          if c mod 90 == r: "CELL [" & $(r + 1) & "," & $(c + 1) & "]"
+          else: ""
+        check t.cell(r, c).textOrEmpty == want
 
 suite "numbers: csv":
   test "toCsv of the first rich table matches golden":

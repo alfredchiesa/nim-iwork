@@ -20,6 +20,13 @@ From there:
   notes, and table rows. `doc.textBlocks` gives the same thing as
   labeled pieces (`tbHeader`, `tbBody`, `tbNotes`, ...) tagged with the
   slide or sheet they came from
+- **Knowing when text is incomplete** - `doc.getTextReport()` returns the
+  same text plus `warnings` (known gaps, like a reference the walk
+  couldn't follow) and `usedFallback` (the text came from `plainText`
+  because the structured walk failed or came up empty). A blank document
+  comes back with no warnings. Pass `strict = true` to raise
+  `IworkFormatError` on any known gap instead. It only flags gaps it
+  knows to look for, not every unsupported construct
 - **Raw storage text** - `doc.plainText()` dumps every text storage in
   object order instead, master slides and all, with attachment
   placeholders stripped and line breaks normalized
@@ -41,7 +48,9 @@ all exported too:
   `deref` / `derefAll` follow references between them
 
 Pre-2013 documents are detected and rejected with a clear
-`IworkUnsupportedError`. Not done yet: formula ast decoding (formula
+`IworkUnsupportedError`. Corrupt or unreadable archives, and zips or
+folders with no `.iwa` archives inside, raise `IworkContainerError`
+naming the path, with the underlying error kept as `parent`. Not done yet: formula ast decoding (formula
 cells surface their cached display value) and rich text cells.
 
 ## Notable Updates
@@ -242,7 +251,9 @@ reverse-engineering work of:
 - [keynote-parser](https://github.com/psobot/keynote-parser) - the
   reference for keynote type and field numbers
 - [numbers-parser](https://github.com/masaccio/numbers-parser) - the
-  reference for the numbers cell storage format
+  reference for the numbers cell storage format, and the source of the
+  large-table test fixtures (MIT, see
+  `tests/fixtures/NOTICE-numbers-parser.txt`)
 - [iWorkFileFormat](https://github.com/obriensp/iWorkFileFormat) - the
   original deep dive into the container, snappy, and protobuf layers
 

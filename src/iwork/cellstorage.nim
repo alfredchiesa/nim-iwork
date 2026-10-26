@@ -80,11 +80,11 @@ func readD128(buf: string, at: int): float64 =
   # ever writes small coefficients, so a float64 result is fine here
   let exponent = (((buf[at + 15].ord and 0x7f) shl 7) or
     (buf[at + 14].ord shr 1)) - 0x1820
-  var coefficient = 0.0
+  # the low bit of byte 14 is the coefficient's top bit (2^112), so it
+  # goes in first and the 14 low bytes shift in under it
+  var coefficient = float64(buf[at + 14].ord and 1)
   for i in countdown(13, 0):
     coefficient = coefficient * 256 + float64(buf[at + i].ord)
-  if (buf[at + 14].ord and 1) == 1:
-    coefficient += 1.208925819614629e24 # 2^80 carried out of the low bytes
   result = coefficient * pow(10.0, float64(exponent))
   if (buf[at + 15].ord and 0x80) != 0:
     result = -result
@@ -182,12 +182,13 @@ proc decodeCellAt*(buf: string, offset: int,
     debug "unknown cell type ", cellType, " at offset ", offset
     CellValue(kind: ckError, error: "unknown cell type " & $cellType)
 
-proc cellOffsets*(offsets: string): seq[int] =
+proc cellOffsets*(offsets: string, wide = false): seq[int] =
   ## unpacks the little-endian uint16 per-column offsets buffer;
-  ## 0xffff means the column has no cell in this row
+  ## 0xffff means the column has no cell in this row. with `wide` (the
+  ## row's has_wide_offsets flag) each stored offset counts 4-byte units
   for i in 0 ..< offsets.len div 2:
     let v = offsets[i * 2].ord or (offsets[i * 2 + 1].ord shl 8)
-    result.add(if v == 0xffff: -1 else: v)
+    result.add(if v == 0xffff: -1 elif wide: v * 4 else: v)
 
 proc asString*(v: CellValue): string =
   ## human-readable form of a cell value, also used for csv output

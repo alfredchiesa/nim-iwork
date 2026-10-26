@@ -32,6 +32,12 @@ type
     container*: IworkContainer ## the underlying container, for low-level use
     indexCache: Option[ObjectIndex]
 
+  TextReport* = object
+    ## `getText` output plus what's known to be missing from it
+    text*: string ## same string `getText` returns
+    warnings*: seq[ExtractionWarning] ## known gaps, empty on a clean walk
+    usedFallback*: bool ## true when `text` came from `plainText`
+
 proc openDocument*(path: string): IworkDocument =
   ## opens a keynote, pages, or numbers document,
   ## auto-detecting the application from extension or content
@@ -64,20 +70,53 @@ proc textBlocks*(doc: IworkDocument): seq[TextBlock] =
       echo blk.section, " ", blk.kind, ": ", blk.text
   doc.index.textBlocks(doc.kind)
 
+proc getTextReport*(doc: IworkDocument, strict = false): TextReport =
+  ## `getText` plus the known gaps in it: references the structured walk
+  ## needed but couldn't follow, or a walk that failed outright. a doc
+  ## that's blank on purpose comes back with empty text and no warnings.
+  ## this only flags gaps it knows to look for, it can't promise every
+  ## unsupported construct shows up here. with `strict`, any known gap
+  ## raises IworkFormatError instead of being reported
+  runnableExamples "-r:off":
+    let report = openDocument("report.pages").getTextReport()
+    for w in report.warnings:
+      echo w.kind, ": ", w.message
+    if report.usedFallback:
+      echo "structure didn't decode, this is raw storage text"
+    echo report.text
+  var blocks: seq[TextBlock]
+  try:
+    blocks = doc.index.textBlocks(doc.kind, result.warnings)
+  except IworkFormatError as e:
+    if strict:
+      raise
+    result.warnings.add(ExtractionWarning(kind: ewStructureError,
+      message: e.msg))
+  if strict and result.warnings.len > 0:
+    var msgs: seq[string]
+    for w in result.warnings:
+      msgs.add(w.message)
+    raise newException(IworkFormatError,
+      "incomplete text extraction: " & msgs.join("; "))
+  var parts: seq[string]
+  for blk in blocks:
+    parts.add(blk.text)
+  result.text = parts.join("\n")
+  # partial structured text beats raw storages (which drag in master
+  # slides and duplicates), so only fall back when the walk came up empty
+  if result.warnings.len > 0 and result.text.len == 0:
+    result.text = doc.plainText()
+    result.usedFallback = true
+
 proc getText*(doc: IworkDocument): string =
   ## all of the document's text in reading order - headers, body,
   ## footers, text boxes, presenter notes and table rows - joined with
-  ## newlines. falls back to `plainText` for documents whose structure
-  ## doesn't decode, so there's always something to index
+  ## newlines. falls back to `plainText` when the structure doesn't
+  ## decode, or comes up empty because of a known gap, so there's always
+  ## something to index. use `getTextReport` to see those gaps
   runnableExamples "-r:off":
     echo openDocument("report.pages").getText()
-  var parts: seq[string]
-  try:
-    for blk in doc.textBlocks:
-      parts.add(blk.text)
-  except IworkFormatError:
-    return doc.plainText()
-  parts.join("\n")
+  doc.getTextReport().text
 
 proc slides*(doc: IworkDocument): seq[Slide] =
   ## the presented slides of a keynote document, in deck order;

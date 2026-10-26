@@ -38,16 +38,14 @@ proc bodyStorage(idx: ObjectIndex): Option[IworkObject] =
   if storage.isSome and storage.get.msgType == tswpStorageArchive:
     result = storage
 
-proc pagesBodyText*(idx: ObjectIndex): seq[string] =
-  ## the document body split into non-empty paragraphs, in order
-  runnableExamples "-r:off":
-    import iwork
-    let doc = openDocument("report.pages")
-    for paragraph in doc.index.pagesBodyText:
-      echo paragraph
+proc pagesBodyText*(idx: ObjectIndex,
+    warnings: var seq[ExtractionWarning]): seq[string] =
+  ## like `pagesBodyText`, also noting a missing body storage in `warnings`
   let storage = idx.bodyStorage
   if storage.isNone:
     debug "pages document has no body storage"
+    warnings.add(ExtractionWarning(kind: ewMissingReference,
+      message: "pages document has no body storage"))
     return
   # paragraph breaks are newlines after cleaning, blank lines are just
   # spacing between paragraphs
@@ -55,6 +53,16 @@ proc pagesBodyText*(idx: ObjectIndex): seq[string] =
     if paragraph.strip.len > 0:
       result.add(paragraph)
   debug "pages: ", result.len, " body paragraphs"
+
+proc pagesBodyText*(idx: ObjectIndex): seq[string] =
+  ## the document body split into non-empty paragraphs, in order
+  runnableExamples "-r:off":
+    import iwork
+    let doc = openDocument("report.pages")
+    for paragraph in doc.index.pagesBodyText:
+      echo paragraph
+  var warnings: seq[ExtractionWarning]
+  idx.pagesBodyText(warnings)
 
 proc addTexts(idx: ObjectIndex, archive: IworkObject, field: int,
     into: var seq[string]) =

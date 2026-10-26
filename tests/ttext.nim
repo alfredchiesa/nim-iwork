@@ -1,6 +1,7 @@
 # tests for plain text extraction via the public document api
 import std/[os, strutils, unittest]
 import iwork
+import ./iwabuild
 
 const fixtures = currentSourcePath().parentDir / "fixtures"
 
@@ -84,3 +85,79 @@ suite "text: reading order":
       let doc = openDocument(fixtures / name)
       check doc.getText().len > 0
       check doc.getText() == openDocument(fixtures / name).getText()
+
+proc synthetic(name, stream: string): IworkDocument =
+  let dir = getTempDir() / "iwork_synth_" & name
+  removeDir(dir)
+  writeBundle(dir, stream)
+  # entries load eagerly, so the bundle can go right away
+  result = openDocument(dir)
+  removeDir(dir)
+
+proc storage(id: uint64, text: string): string =
+  iwaObject(id, tswpStorageArchive, pbBytes(3, text))
+
+suite "text: getTextReport":
+  test "real fixtures report clean, matching getText, even when strict":
+    for name in ["simple.key", "simple.pages", "simple.numbers",
+        "rich.key", "rich.numbers"]:
+      let doc = openDocument(fixtures / name)
+      let report = doc.getTextReport(strict = true)
+      check report.warnings.len == 0
+      check not report.usedFallback
+      check report.text == doc.getText()
+
+  test "a missing body reference falls back instead of going blank":
+    for body in ["", pbRef(4, 99)]: # absent, then dangling
+      let doc = synthetic("nobody.pages",
+        iwaObject(1, tpDocumentArchive, body) &
+        storage(2, "Recoverable document text"))
+      check doc.plainText() == "Recoverable document text"
+      check doc.getText() == "Recoverable document text"
+      let report = doc.getTextReport()
+      check report.text == "Recoverable document text"
+      check report.usedFallback
+      check report.warnings.len == 1
+      check report.warnings[0].kind == ewMissingReference
+      expect IworkFormatError:
+        discard doc.getTextReport(strict = true)
+
+  test "an intentionally blank document is blank, not a failure":
+    let doc = synthetic("blank.pages",
+      iwaObject(1, tpDocumentArchive, pbRef(4, 2)) & storage(2, ""))
+    check doc.getText() == ""
+    let report = doc.getTextReport(strict = true)
+    check report.text == ""
+    check report.warnings.len == 0
+    check not report.usedFallback
+
+  test "a structure error falls back like getText always has":
+    let doc = synthetic("noroot.pages", storage(2, "orphan text"))
+    check doc.getText() == "orphan text"
+    let report = doc.getTextReport()
+    check report.usedFallback
+    check report.warnings.len == 1
+    check report.warnings[0].kind == ewStructureError
+    expect IworkFormatError:
+      discard doc.getTextReport(strict = true)
+
+  test "partial keynote text is kept, without master or orphan storages":
+    # slide tree points at one real node and one dangling one; storage 7
+    # stands in for master-slide text nothing on a slide references
+    let doc = synthetic("partial.key",
+      iwaObject(1, knDocumentArchive, pbRef(2, 2)) &
+      iwaObject(2, knShowArchive, pbBytes(3, pbRef(2, 3) & pbRef(2, 99))) &
+      iwaObject(3, knSlideNodeArchive, pbRef(2, 4)) &
+      iwaObject(4, knSlideArchive, pbRef(7, 5)) &
+      iwaObject(5, tswpShapeInfoArchive, pbRef(2, 6)) &
+      storage(6, "slide text") &
+      storage(7, "Master Title"))
+    check doc.slides.len == 1
+    let report = doc.getTextReport()
+    check report.text == "slide text"
+    check not report.usedFallback
+    check report.warnings.len == 1
+    check report.warnings[0].kind == ewMissingReference
+    check doc.getText() == "slide text"
+    expect IworkFormatError:
+      discard doc.getTextReport(strict = true)

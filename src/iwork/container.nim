@@ -30,36 +30,54 @@ type
 const metadataPlistPath = "Metadata/Properties.plist"
 
 proc loadZip(path: string): OrderedTable[string, string] =
-  # eagerly pull every entry into memory; iwork docs are small enough
-  let reader = openZipArchive(path)
+  # eagerly pull every entry into memory; iwork docs are small enough.
+  # zippy and the os raise their own types, fold those into ours
   try:
-    for entryPath in reader.walkFiles:
-      result[entryPath] = reader.extractFile(entryPath)
-  finally:
-    reader.close()
+    let reader = openZipArchive(path)
+    try:
+      for entryPath in reader.walkFiles:
+        result[entryPath] = reader.extractFile(entryPath)
+    finally:
+      reader.close()
+  except ZippyError, IOError, OSError:
+    let e = getCurrentException()
+    raise newException(IworkContainerError,
+      "can't read zip " & path & ": " & e.msg, e)
 
-proc explodeNestedIndex(entries: var OrderedTable[string, string]) =
+proc explodeNestedIndex(entries: var OrderedTable[string, string],
+    path: string) =
   # some documents ship their iwa files inside a nested Index.zip.
   # zippy only opens archives from disk, so bounce through a temp file.
   if "Index.zip" notin entries:
     return
-  let (tmpFile, tmpPath) = createTempFile("iwork_index_", ".zip")
   try:
-    tmpFile.write(entries["Index.zip"])
-    tmpFile.close()
-    for innerPath, data in loadZip(tmpPath):
-      # normalize so callers always address iwa files as Index/<name>
-      let key =
-        if innerPath.startsWith("Index/"): innerPath
-        else: "Index/" & innerPath
-      entries[key] = data
-    entries.del("Index.zip")
-  finally:
-    removeFile(tmpPath)
+    let (tmpFile, tmpPath) = createTempFile("iwork_index_", ".zip")
+    try:
+      tmpFile.write(entries["Index.zip"])
+      tmpFile.close()
+      for innerPath, data in loadZip(tmpPath):
+        # normalize so callers always address iwa files as Index/<name>
+        let key =
+          if innerPath.startsWith("Index/"): innerPath
+          else: "Index/" & innerPath
+        entries[key] = data
+      entries.del("Index.zip")
+    finally:
+      removeFile(tmpPath)
+  except IworkContainerError, IOError, OSError:
+    # the temp path means nothing to callers, name the document instead
+    let e = getCurrentException()
+    raise newException(IworkContainerError,
+      "can't read nested Index.zip in " & path & ": " & e.msg, e)
 
 proc loadBundle(path: string): OrderedTable[string, string] =
-  for filePath in walkDirRec(path, relative = true):
-    result[filePath.replace(DirSep, '/')] = readFile(path / filePath)
+  try:
+    for filePath in walkDirRec(path, relative = true):
+      result[filePath.replace(DirSep, '/')] = readFile(path / filePath)
+  except IOError, OSError:
+    let e = getCurrentException()
+    raise newException(IworkContainerError,
+      "can't read bundle " & path & ": " & e.msg, e)
 
 proc hasIwaEntries(entries: OrderedTable[string, string]): bool =
   for entryPath in entries.keys:
@@ -111,9 +129,14 @@ proc openContainer*(path: string): IworkContainer =
     result.entries = loadZip(path)
     layout = "zip"
   if "Index.zip" in result.entries:
-    explodeNestedIndex(result.entries)
+    explodeNestedIndex(result.entries, path)
     layout &= " with nested Index.zip"
   checkLegacy(result.entries, path)
+  # every supported layout has its .iwa archives loaded by now, so anything
+  # without one is just a zip or folder with an iwork-ish name
+  if not result.entries.hasIwaEntries:
+    raise newException(IworkContainerError,
+      path & " isn't an iwork document: no .iwa archives found")
   result.docKind = detectDocKind(path, result.entries)
   debug "opened ", path, ": kind=", result.kind, " docKind=", result.docKind,
     " entries=", result.entries.len, " layout=", layout

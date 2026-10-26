@@ -1,0 +1,36 @@
+The numbers-parser-*.numbers fixtures are unmodified copies of files from
+numbers-parser (https://github.com/masaccio/numbers-parser), commit
+5ec3694082e7003c824bb400eed97bd7e2eb9cd6:
+
+  numbers-parser-test-3.numbers        tests/data/test-3.numbers
+  numbers-parser-test-6.numbers        tests/data/test-6.numbers
+  numbers-parser-test-bullets.numbers  tests/data/test-bullets.numbers
+  numbers-parser-test-hlinks.numbers   tests/data/test-hlinks.numbers
+
+Their expected contents are defined in that project's tests/test_large.py
+(test-3, test-6) and tests/test_bullets.py (test-bullets, test-hlinks).
+
+sha256:
+154591bc75f0cac53da5a8be40782a8f4364ae9de96f011b71c7029d04dd7229  numbers-parser-test-3.numbers
+a17f3831c75adc6570c0c63fae06fa4e5a1728b72d31a90c8612b6ad7e20d69a  numbers-parser-test-6.numbers
+b6c04428b4c85de1f41c84a6648d4885f1e525a5a74bea8af89cc97a9063b408  numbers-parser-test-bullets.numbers
+c8b5262e3543225b8f09254f7a8d064703de96bed7efd733f4d99d2e9a70490b  numbers-parser-test-hlinks.numbers
+
+They are redistributed under numbers-parser's MIT license:
+
+Copyright 2021 Jon Connell
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

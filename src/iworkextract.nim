@@ -37,6 +37,12 @@ csv options:
                     written to stdout
   --force           overwrite files that already exist in DIR
 
+text and json options:
+  --no-notes        leave out keynote presenter notes
+  --no-skipped      leave out keynote slides skipped in the show
+  --no-headers      leave out pages headers
+  --no-footers      leave out pages footers
+
 other options:
   --strict          fail a document on any known extraction gap instead of
                     warning about it
@@ -56,6 +62,7 @@ type
     modeSet: bool
     sheet, table, outDir: string
     hasSheet, hasTable, force, strict: bool
+    extract: ExtractOptions
     paths: seq[string]
 
   UsageError = object of CatchableError
@@ -79,7 +86,8 @@ proc reportWarnings(path: string, warnings: seq[ExtractionWarning],
 
 proc parseArgs(): Options =
   var p = initOptParser(shortNoVal = {'h', 'v'},
-    longNoVal = @["help", "version", "text", "json", "csv", "force", "strict"])
+    longNoVal = @["help", "version", "text", "json", "csv", "force", "strict",
+      "no-notes", "no-skipped", "no-headers", "no-footers"])
   var wantOutput = false
   for kind, key, val in p.getopt():
     let flag = (if kind == cmdShortOption: "-" else: "--") & key
@@ -125,6 +133,10 @@ proc parseArgs(): Options =
           result.outDir = val
       of "force": result.force = true
       of "strict": result.strict = true
+      of "no-notes": result.extract.excludeNotes = true
+      of "no-skipped": result.extract.excludeSkippedSlides = true
+      of "no-headers": result.extract.excludeHeaders = true
+      of "no-footers": result.extract.excludeFooters = true
       else:
         raise newException(UsageError, "unknown option: " & flag)
     of cmdEnd:
@@ -137,27 +149,38 @@ proc parseArgs(): Options =
       result.outDir.len > 0 or result.force):
     raise newException(UsageError,
       "--sheet, --table, --output, and --force only work with --csv")
+  if result.mode == mCsv and result.extract != ExtractOptions():
+    raise newException(UsageError,
+      "--no-notes, --no-skipped, --no-headers, and --no-footers don't " &
+      "work with --csv")
   if result.mode == mCsv and result.outDir.len == 0 and result.paths.len > 1:
     raise newException(UsageError,
       "--csv with several documents needs --output DIR")
 
 proc textOf(path: string, opts: Options): string =
-  let report = openDocument(path).getTextReport(strict = opts.strict)
+  let report = openDocument(path).getTextReport(strict = opts.strict,
+    opts = opts.extract)
   reportWarnings(path, report.warnings, report.usedFallback)
   report.text
 
 proc jsonOf(path: string, opts: Options): JsonNode =
   let doc = openDocument(path)
-  let report = doc.getTextReport(strict = opts.strict)
+  let report = doc.getTextReport(strict = opts.strict, opts = opts.extract)
   reportWarnings(path, report.warnings, report.usedFallback)
   var warnings = newJArray()
   for w in report.warnings:
     warnings.add(%*{"kind": tag(w.kind), "message": w.message})
   var blocks = newJArray()
   if not report.usedFallback:
-    for blk in doc.textBlocks:
-      blocks.add(%*{"kind": tag(blk.kind), "section": blk.section,
-        "text": blk.text})
+    for blk in doc.textBlocks(opts.extract):
+      let b = %*{"kind": tag(blk.kind), "section": blk.section,
+        "text": blk.text}
+      # source details only show up when they're known
+      if blk.slide > 0: b["slide"] = %blk.slide
+      if blk.table.len > 0: b["table"] = %blk.table
+      if blk.row > 0: b["row"] = %blk.row
+      if blk.objectId > 0: b["objectId"] = %BiggestInt(blk.objectId)
+      blocks.add(b)
   result = %*{"path": path, "ok": true, "kind": tag(doc.kind),
     "text": report.text, "usedFallback": report.usedFallback,
     "warnings": warnings, "blocks": blocks}

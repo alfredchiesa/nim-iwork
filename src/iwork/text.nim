@@ -5,7 +5,9 @@
 import std/[algorithm, strutils, tables]
 import ./objects, ./typemaps, ./wire
 
-func cleanRun(run: string): string =
+func cleanRun*(run: string): string =
+  ## raw storage text with attachment and annotation placeholders dropped
+  ## and line breaks normalized to newlines
   # placeholder characters spelled as utf-8 byte escapes so nothing
   # invisible hides in the source
   result = run

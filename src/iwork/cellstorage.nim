@@ -93,10 +93,11 @@ func readD128(buf: string, at: int): float64 =
 let appleEpoch = dateTime(2001, mJan, 1, zone = utc())
 
 proc decodeCellAt*(buf: string, offset: int,
-    strings: Table[uint32, string]): CellValue =
-  ## decodes one v5 cell record at a byte offset; anything unexpected
-  ## logs at debug level and comes back as an error/empty value instead
-  ## of raising, so one weird cell never kills the document
+    strings, richTexts: Table[uint32, string],
+    richMissing: var bool): CellValue =
+  ## like `decodeCellAt`, also resolving rich text cells through
+  ## `richTexts` (payload key -> plain text). a rich text cell whose key
+  ## isn't there comes back as empty text with `richMissing` set
   if offset + 12 > buf.len:
     debug "cell record truncated at offset ", offset
     return CellValue(kind: ckError, error: "truncated cell record")
@@ -112,9 +113,9 @@ proc decodeCellAt*(buf: string, offset: int,
   var d128 = 0.0
   var dbl = 0.0
   var datetime = 0.0
-  var stringId = 0'u32
+  var stringId, richId = 0'u32
   var hasFormula = false
-  var hasD128, hasDouble, hasString = false
+  var hasD128, hasDouble, hasString, hasRich = false
   for bit in 0 ..< 21:
     if (flags and (1'u32 shl bit)) == 0:
       continue
@@ -134,6 +135,9 @@ proc decodeCellAt*(buf: string, offset: int,
     of fStringId:
       stringId = readUint32(buf, pos)
       hasString = true
+    of fRichId:
+      richId = readUint32(buf, pos)
+      hasRich = true
     of fFormulaId:
       hasFormula = true
     else:
@@ -175,12 +179,28 @@ proc decodeCellAt*(buf: string, offset: int,
   of ctError:
     CellValue(kind: ckError, error: "#ERROR")
   of ctRichText:
-    # rich text bodies live in their own payload list; we don't chase
-    # them yet, so surface a marker rather than losing the cell
-    CellValue(kind: ckText, text: "")
+    # the caller resolves the payload list, we just look the key up.
+    # unresolved stays "" like it always has, but gets flagged
+    if hasRich and richId in richTexts:
+      CellValue(kind: ckText, text: richTexts[richId])
+    else:
+      debug "rich text cell without resolvable payload ", richId
+      richMissing = true
+      CellValue(kind: ckText, text: "")
   else:
     debug "unknown cell type ", cellType, " at offset ", offset
     CellValue(kind: ckError, error: "unknown cell type " & $cellType)
+
+proc decodeCellAt*(buf: string, offset: int,
+    strings: Table[uint32, string]): CellValue =
+  ## decodes one v5 cell record at a byte offset; anything unexpected
+  ## logs at debug level and comes back as an error/empty value instead
+  ## of raising, so one weird cell never kills the document. rich text
+  ## cells come back as empty text here, the overload taking `richTexts`
+  ## resolves them
+  var richMissing = false
+  decodeCellAt(buf, offset, strings, initTable[uint32, string](),
+    richMissing)
 
 proc cellOffsets*(offsets: string, wide = false): seq[int] =
   ## unpacks the little-endian uint16 per-column offsets buffer;

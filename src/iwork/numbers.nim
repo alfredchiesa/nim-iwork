@@ -17,6 +17,7 @@ type
   Table* = object
     ## one table's decoded cell grid
     name*: string
+    id*: uint64 ## the table model's object id
     numRows*: int
     numCols*: int
     grid: seq[seq[CellValue]]
@@ -44,9 +45,11 @@ const
   modelColsField = 7
   modelNameField = 8
   # tst.datastore: field 3 = tile storage {entries at 1: {1: tileid,
-  # 2: tile ref}}, field 4 = shared string list ref
+  # 2: tile ref}}, field 4 = shared string list ref, field 17 = rich
+  # text payload list ref
   storeTilesField = 3
   storeStringsField = 4
+  storeRichTextField = 17
   tileStorageEntriesField = 1
   tileEntryIdField = 1
   tileEntryRefField = 2
@@ -56,6 +59,10 @@ const
   dataListEntriesField = 3
   entryKeyField = 1
   entryStringField = 3
+  # rich text list entries hold a payload ref at 9, and the
+  # tst.richtextpayloadarchive keeps its text storage ref at 1
+  entryRichPayloadField = 9
+  payloadStorageField = 1
   # tst.tile field 5 = repeated row infos: {1: row index in tile,
   # 5: storage version, 6: cell storage buffer, 7: cell offsets,
   # 8: has_wide_offsets}
@@ -76,10 +83,27 @@ proc stringTable(idx: ObjectIndex, dataStore: WireMessage): tables.Table[uint32,
     if key.isSome and s.isSome:
       result[uint32(key.get)] = s.get
 
+proc richTextTable(idx: ObjectIndex, dataStore: WireMessage): tables.Table[uint32, string] =
+  # rich text cells store a key into this list, which points at a payload
+  # wrapping a regular text storage. styling is ignored, plain text only
+  let listObj = idx.deref(dataStore, storeRichTextField)
+  if listObj.isNone:
+    return
+  for entry in listObj.get.message.getRepeatedMessage(dataListEntriesField):
+    let key = entry.getUint(entryKeyField)
+    let payload = idx.deref(entry, entryRichPayloadField)
+    if key.isNone or payload.isNone or
+        payload.get.msgType != tstRichTextPayloadArchive:
+      continue
+    let storage = idx.deref(payload.get.message, payloadStorageField)
+    if storage.isSome and storage.get.msgType == tswpStorageArchive:
+      result[uint32(key.get)] = storageText(storage.get)
+
 proc buildTable(idx: ObjectIndex, model: IworkObject,
     warnings: var seq[ExtractionWarning]): Table =
   let msg = model.message
   result.name = msg.getString(modelNameField).get("")
+  result.id = model.id
   result.numRows = int(msg.getUint(modelRowsField).get(0))
   result.numCols = int(msg.getUint(modelColsField).get(0))
   result.grid = newSeq[seq[CellValue]](result.numRows)
@@ -93,6 +117,8 @@ proc buildTable(idx: ObjectIndex, model: IworkObject,
       message: "table " & result.name & " has no data store"))
     return
   let strings = stringTable(idx, dataStore.get)
+  let richTexts = richTextTable(idx, dataStore.get)
+  var richMissing = 0
 
   let tileStorage = dataStore.get.getMessage(storeTilesField)
   if tileStorage.isNone:
@@ -116,8 +142,25 @@ proc buildTable(idx: ObjectIndex, model: IworkObject,
       for col in 0 ..< min(result.numCols, offsets.len):
         if offsets[col] < 0:
           continue # 0xffff, empty cell
-        result.grid[rowIndex][col] = decodeCellAt(buf, offsets[col], strings)
+        var missing = false
+        result.grid[rowIndex][col] = decodeCellAt(buf, offsets[col], strings,
+          richTexts, missing)
+        if missing:
+          inc richMissing
+  if richMissing > 0:
+    warnings.add(ExtractionWarning(kind: ewMissingReference,
+      message: "table " & result.name & ": " & $richMissing &
+        " rich text cells don't resolve"))
   debug "built table ", result.name, ": ", result.numRows, "x", result.numCols
+
+proc decodeTable*(idx: ObjectIndex, info: IworkObject,
+    warnings: var seq[ExtractionWarning]): Option[Table] =
+  ## decodes the table behind a tst.tableinfoarchive drawable. the table
+  ## engine is shared, so this works for keynote and pages tables too;
+  ## none when the info has no table model
+  let model = idx.deref(info.message, infoModelField)
+  if model.isSome and model.get.msgType == tstTableModelArchive:
+    result = some(buildTable(idx, model.get, warnings))
 
 proc lostRefs(msg: WireMessage, field, found: int, what: string,
     warnings: var seq[ExtractionWarning]) =
@@ -150,9 +193,9 @@ proc numbersSheets*(idx: ObjectIndex,
     for drawable in drawables:
       case drawable.msgType
       of tstTableInfoArchive:
-        let model = idx.deref(drawable.message, infoModelField)
-        if model.isSome and model.get.msgType == tstTableModelArchive:
-          sheet.tables.add(buildTable(idx, model.get, warnings))
+        let table = idx.decodeTable(drawable, warnings)
+        if table.isSome:
+          sheet.tables.add(table.get)
         else:
           warnings.add(ExtractionWarning(kind: ewMissingReference,
             message: "a table on sheet " & sheet.name & " has no table model"))

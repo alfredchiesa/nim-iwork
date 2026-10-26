@@ -108,6 +108,46 @@ suite "cli: json":
     check docs[2]["sheets"][0]["name"].getStr == "Overview"
     check docs[2]["sheets"][0]["tables"][0]["rows"][1][1].getStr == "337500"
 
+suite "cli: extraction options":
+  let deck = fixtures / "grouped-tables.key"
+
+  test "--no-notes and --no-skipped match the library options":
+    let doc = openDocument(deck)
+    let r = run("--no-notes", "--no-skipped", deck)
+    check r.code == 0
+    check r.output == doc.getText(ExtractOptions(excludeNotes: true,
+      excludeSkippedSlides: true)) & "\n"
+    check "Mention the north" notin r.output
+    check "Hidden slide" notin r.output
+    check "Region\tQ1\tQ2" in r.output
+    check "Group alpha" in r.output
+    check run("--no-headers", "--no-footers", deck).output ==
+      doc.getText() & "\n"
+
+  test "json blocks carry their sources and honor the options":
+    let r = run("--json", "--no-notes", deck)
+    check r.code == 0
+    let blocks = parseJson(r.output)[0]["blocks"]
+    var kinds: seq[string]
+    for b in blocks:
+      kinds.add(b["kind"].getStr)
+      check b["slide"].getInt in 1 .. 4
+      check b["objectId"].getInt > 0
+    check "notes" notin kinds
+    let row = blocks[2]
+    check row["kind"].getStr == "tableRow"
+    check row["table"].getStr == "Sales"
+    check row["row"].getInt == 1
+    # unknown sources are left out rather than zeroed
+    let pages = parseJson(run("--json", fixtures / "simple.pages").output)
+    check not pages[0]["blocks"][0].hasKey("slide")
+    check not pages[0]["blocks"][0].hasKey("row")
+
+  test "the options don't mix with --csv":
+    let r = run("--csv", "--no-notes", fixtures / "rich.numbers")
+    check r.code == 2
+    check "--help" in r.errors
+
 suite "cli: csv":
   let rich = fixtures / "rich.numbers"
   let book = openDocument(rich)

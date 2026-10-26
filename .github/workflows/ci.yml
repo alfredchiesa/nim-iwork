@@ -10,7 +10,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nim: [stable, devel]
+        # 2.0.x is the floor iwork.nimble declares
+        nim: ['2.0.x', stable, devel]
     runs-on: ubuntu-latest
     # devel is allowed to break us without failing the workflow
     continue-on-error: ${{ matrix.nim == 'devel' }}

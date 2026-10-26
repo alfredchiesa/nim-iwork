@@ -22,6 +22,9 @@ const
                                        ## footer (field 2) storages, three
                                        ## slots each: left, center, right
                                        ## (verified against the pages templates)
+  tpFloatingDrawablesArchive* = 10010'u32 ## drawables floating on pages,
+                                          ## grouped by page
+                                          ## (verified against real documents)
 
   # numbers (tn)
   tnDocumentArchive* = 1'u32    ## tn.documentarchive, the root object
@@ -32,8 +35,15 @@ const
   tswpShapeInfoArchive* = 2011'u32 ## tswp.shapeinfoarchive, a text shape
                                    ## (source: keynote-parser proto mapping)
 
+  # shared drawing layer (tsd), same ids across all three apps
+  tsdGroupArchive* = 3008'u32 ## tsd.grouparchive, grouped drawables
+                              ## (verified against real documents)
+
   # shared table engine (tst), same ids across all three apps
   tstTableInfoArchive* = 6000'u32  ## tst.tableinfoarchive, table drawable
   tstTableModelArchive* = 6001'u32 ## tst.tablemodelarchive, table structure
   tstTileArchive* = 6002'u32       ## tst.tile, a tile of cell storage
   tstTableDataList* = 6005'u32     ## tst.tabledatalist, shared value lists
+  tstRichTextPayloadArchive* = 6218'u32 ## tst.richtextpayloadarchive, one
+                                        ## rich text cell's storage
+                                        ## (verified against real documents)

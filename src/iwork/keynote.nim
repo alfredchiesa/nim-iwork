@@ -11,8 +11,8 @@ runnableExamples "-r:off":
     for line in slide.body:
       echo "  ", line
 
-import std/[logging, options, strutils, tables]
-import ./errors, ./objects, ./text, ./typemaps, ./wire
+import std/[logging, options, sets, strutils, tables]
+import ./errors, ./numbers, ./objects, ./text, ./typemaps, ./wire
 
 type
   Slide* = object
@@ -22,6 +22,11 @@ type
     body*: seq[string]    ## every other text box on the slide
     presenterNotes*: string ## note text, "" if none
     isSkipped*: bool      ## true when the slide is skipped in the show
+    tables*: seq[numbers.Table] ## tables on the slide, grouped ones
+                                ## included, in drawable order
+    titleId*: uint64      ## text storage behind `title`, 0 if none
+    bodyIds*: seq[uint64] ## text storage behind each `body` entry
+    notesId*: uint64      ## text storage behind `presenterNotes`, 0 if none
 
 const
   # kn.documentarchive field 2 = show (source: keynote-parser kn.proto)
@@ -50,6 +55,8 @@ const
   shapeSuperField = 1
   # kn.notearchive field 1 = contained storage
   noteStorageField = 1
+  # tsd.grouparchive field 2 = the grouped drawables
+  groupChildrenField = 2
 
 proc drawableStorage(idx: ObjectIndex, drawable: IworkObject): Option[IworkObject] =
   # try the direct shape layout first, then the placeholder super layout;
@@ -63,12 +70,26 @@ proc drawableStorage(idx: ObjectIndex, drawable: IworkObject): Option[IworkObjec
     if nested.isSome and nested.get.msgType == tswpStorageArchive:
       return nested
 
-proc noteText(idx: ObjectIndex, slide: IworkObject): string =
+proc noteText(idx: ObjectIndex, slide: IworkObject, id: var uint64): string =
   let note = idx.deref(slide.message, slideNoteField)
   if note.isSome:
     let storage = idx.deref(note.get.message, noteStorageField)
     if storage.isSome and storage.get.msgType == tswpStorageArchive:
       result = storageText(storage.get).strip(leading = false, chars = {'\n'})
+      id = storage.get.id
+
+proc collect(idx: ObjectIndex, drawable: IworkObject,
+    into: var seq[IworkObject], seen: var HashSet[uint64]) =
+  # groups hold their drawables at field 2 and can nest; seen keeps a
+  # drawable listed under several fields (or a cycle) from showing twice
+  if drawable.id in seen:
+    return
+  seen.incl(drawable.id)
+  if drawable.msgType == tsdGroupArchive:
+    for child in idx.derefAll(drawable.message, groupChildrenField):
+      idx.collect(child, into, seen)
+  else:
+    into.add(drawable)
 
 proc buildSlide(idx: ObjectIndex, node: IworkObject, index: int,
     warnings: var seq[ExtractionWarning]): Slide =
@@ -85,14 +106,23 @@ proc buildSlide(idx: ObjectIndex, node: IworkObject, index: int,
   # classification is ambiguous the text lands in body - losing no text
   # beats perfect labeling
   var candidates: seq[IworkObject]
+  var seen: HashSet[uint64]
   for field in [slideTitleField, slideBodyField, slideDrawablesField,
       slidePlaceholdersField]:
     for drawable in idx.derefAll(slide.get.message, field):
-      if not candidates.contains(drawable):
-        candidates.add(drawable)
+      idx.collect(drawable, candidates, seen)
 
-  var seenStorages: seq[uint64]
+  var seenStorages, seenTables: seq[uint64]
   for drawable in candidates:
+    if drawable.msgType == tstTableInfoArchive:
+      let table = idx.decodeTable(drawable, warnings)
+      if table.isNone:
+        warnings.add(ExtractionWarning(kind: ewMissingReference,
+          message: "a table on slide " & $index & " has no table model"))
+      elif table.get.id notin seenTables:
+        seenTables.add(table.get.id)
+        result.tables.add(table.get)
+      continue
     let storage = drawableStorage(idx, drawable)
     if storage.isNone or storage.get.id in seenStorages:
       continue
@@ -103,10 +133,12 @@ proc buildSlide(idx: ObjectIndex, node: IworkObject, index: int,
     if titlePlaceholder.isSome and drawable.id == titlePlaceholder.get.id and
         result.title.len == 0:
       result.title = cleaned
+      result.titleId = storage.get.id
     else:
       result.body.add(cleaned)
+      result.bodyIds.add(storage.get.id)
 
-  result.presenterNotes = noteText(idx, slide.get)
+  result.presenterNotes = noteText(idx, slide.get, result.notesId)
 
 proc keynoteSlides*(idx: ObjectIndex,
     warnings: var seq[ExtractionWarning]): seq[Slide] =

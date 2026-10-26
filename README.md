@@ -16,10 +16,16 @@ From there:
 
 - **All the text, in reading order** - `doc.getText()` returns everything
   the document says, from any of the three formats: page headers and
-  footers, body paragraphs, slide titles and text boxes, presenter
-  notes, and table rows. `doc.textBlocks` gives the same thing as
-  labeled pieces (`tbHeader`, `tbBody`, `tbNotes`, ...) tagged with the
-  slide or sheet they came from
+  footers, body paragraphs, slide titles and text boxes (grouped ones
+  too), presenter notes, and table rows - including tables on keynote
+  slides and in pages documents. `doc.textBlocks` gives the same thing
+  as labeled pieces (`tbHeader`, `tbBody`, `tbNotes`, ...) tagged with
+  the slide or sheet they came from, plus where they're known the slide
+  number, table name, 1-based table row, and source object id
+- **Leaving parts out** - pass `ExtractOptions(excludeNotes: true)` (or
+  `excludeSkippedSlides`, `excludeHeaders`, `excludeFooters`) to
+  `getText`, `textBlocks`, or `getTextReport`. By default nothing is left
+  out
 - **Knowing when text is incomplete** - `doc.getTextReport()` returns the
   same text plus `warnings` (known gaps, like a reference the walk
   couldn't follow) and `usedFallback` (the text came from `plainText`
@@ -31,10 +37,10 @@ From there:
   object order instead, master slides and all, with attachment
   placeholders stripped and line breaks normalized
 - **Keynote** - `doc.slides` gives you each slide's title, body text
-  boxes, presenter notes, and skip flag, in deck order
+  boxes, tables, presenter notes, and skip flag, in deck order
 - **Numbers** - `doc.sheets` / `doc.tables` decode the binary cell storage
-  into typed values (text, number, bool, date, duration, formula, error),
-  with `toCsv` for quick export
+  into typed values (text, rich text as plain text, number, bool, date,
+  duration, formula, error), with `toCsv` for quick export
 - **Pages** - `doc.bodyText` returns the document body as paragraphs
 
 And when the high-level api isn't enough, the layers it's built on are
@@ -51,13 +57,20 @@ Pre-2013 documents are detected and rejected with a clear
 `IworkUnsupportedError`. Corrupt or unreadable archives, and zips or
 folders with no `.iwa` archives inside, raise `IworkContainerError`
 naming the path, with the underlying error kept as `parent`. Not done yet: formula ast decoding (formula
-cells surface their cached display value) and rich text cells.
+cells surface their cached display value) and any styling.
+
+Reading order is best effort, since layout isn't decoded: keynote tables
+come after the slide's text boxes, pages tables anchored in the body come
+right after their paragraph, and floating pages text boxes and tables come
+last. There are no page numbers.
 
 ## Notable Updates
 
 - **Unreleased (on main)** - the `iworkextract` CLI, `getTextReport()`
   with extraction warnings and strict mode, wide-offset numbers tables,
-  and clearer container errors. These ship in the next release
+  clearer container errors, rich text numbers cells, tables in keynote
+  and pages, grouped keynote shapes, `ExtractOptions`, and source details
+  on text blocks. These ship in the next release
 - **v1.2.0** (2026-08-29) - `getText()` returns all document text in
   reading order
 - **v1.1.7** (2026-07-24) - first release: keynote slides, numbers tables
@@ -154,7 +167,14 @@ iworkextract --csv --sheet 2 --table 2 tests/fixtures/rich.numbers
 # paths written are printed, clashing names get -2, -3, ... and existing
 # files are left alone unless you pass --force
 iworkextract --csv -o out/ tests/fixtures/rich.numbers tests/fixtures/simple.numbers
+
+# leave out presenter notes and skipped slides (--no-headers and
+# --no-footers do the same for pages); works with --text and --json
+iworkextract --no-notes --no-skipped tests/fixtures/grouped-tables.key
 ```
+
+In `--json` output each block also has `slide`, `table`, `row`, and
+`objectId` keys when those are known, and leaves them out otherwise.
 
 Results go to stdout, warnings and errors to stderr. Known extraction
 gaps are reported as warnings, and `--strict` turns them into failures.
@@ -201,8 +221,8 @@ bundle):
 
 | Format | Extensions | Supported | Notes |
 | --- | --- | --- | --- |
-| Keynote | `.key` | yes | slides with titles, body text boxes, presenter notes, skip flag |
-| Pages | `.pages` | yes | body paragraphs and plain text |
+| Keynote | `.key` | yes | slides with titles, body text boxes (grouped too), tables, presenter notes, skip flag |
+| Pages | `.pages` | yes | body paragraphs, headers, footers, text boxes, inline and floating tables |
 | Numbers | `.numbers` | yes | sheets, tables, typed cell values, csv export |
 | iWork '09 and earlier | `.key`, `.pages`, `.numbers` | no | pre-2013 XML format (`index.xml` / `index.apxl`) - detected and rejected with `IworkUnsupportedError` |
 | Password-protected documents | any | no | encrypted containers can't be read |
@@ -214,7 +234,8 @@ Within supported documents, a few cell/content flavors are partial:
 | --- | --- |
 | text, numbers, currency, booleans, dates, durations | fully decoded |
 | formula cells | cached display value; the formula itself shows as `=?` when no cached value exists |
-| rich text cells | decode as empty text for now |
+| rich text cells | plain text; styling, bullet characters, and link targets are dropped |
+| tables inside text boxes, table cells, headers, or footers, and pages groups | not read yet |
 | images, movies, charts | skipped (text extraction only) |
 
 ## How the format works
@@ -247,12 +268,19 @@ nimble test
 ```
 
 Tests live in `tests/t*.nim` and run against real documents in
-`tests/fixtures/`, with expected outputs pinned in `tests/golden/`. To run
-a single test file:
+`tests/fixtures/`, with expected outputs pinned in `tests/golden/`.
+`grouped-tables.key` and `inline-tables.pages` were generated by the
+`make-*.applescript` scripts next to them (they drive Keynote and Pages,
+and need accessibility access), so their contents are known up front.
+To run a single test file:
 
 ```sh
 nim c -r tests/tnumbers.nim
 ```
+
+CI runs the suite on Linux against Nim 2.0.x (the declared minimum),
+stable, and devel. macOS is where the fixtures are made and tested by
+hand, but CI doesn't run there, and Windows isn't tested at all.
 
 ```sh
 # regenerate docs locally and browse them
@@ -311,7 +339,7 @@ reverse-engineering work of:
   reference for keynote type and field numbers
 - [numbers-parser](https://github.com/masaccio/numbers-parser) - the
   reference for the numbers cell storage format, and the source of the
-  large-table test fixtures (MIT, see
+  large-table and rich text test fixtures (MIT, see
   `tests/fixtures/NOTICE-numbers-parser.txt`)
 - [iWorkFileFormat](https://github.com/obriensp/iWorkFileFormat) - the
   original deep dive into the container, snappy, and protobuf layers

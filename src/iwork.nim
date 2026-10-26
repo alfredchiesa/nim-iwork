@@ -60,23 +60,28 @@ proc plainText*(doc: IworkDocument): string =
   ## all document text, storages joined with newlines
   doc.index.extractText.join("\n")
 
-proc textBlocks*(doc: IworkDocument): seq[TextBlock] =
+proc textBlocks*(doc: IworkDocument,
+    opts = ExtractOptions()): seq[TextBlock] =
   ## every piece of text in the document in reading order, each labeled
   ## with what it is (header, body, footer, text box, notes, table row)
-  ## and which slide or sheet it came from
+  ## and which slide or sheet it came from. `opts` can leave out notes,
+  ## skipped slides, headers, or footers
   runnableExamples "-r:off":
     let doc = openDocument("deck.key")
     for blk in doc.textBlocks:
       echo blk.section, " ", blk.kind, ": ", blk.text
-  doc.index.textBlocks(doc.kind)
+    let noNotes = doc.textBlocks(ExtractOptions(excludeNotes: true))
+  doc.index.textBlocks(doc.kind, opts)
 
-proc getTextReport*(doc: IworkDocument, strict = false): TextReport =
+proc getTextReport*(doc: IworkDocument, strict = false,
+    opts = ExtractOptions()): TextReport =
   ## `getText` plus the known gaps in it: references the structured walk
   ## needed but couldn't follow, or a walk that failed outright. a doc
   ## that's blank on purpose comes back with empty text and no warnings.
   ## this only flags gaps it knows to look for, it can't promise every
   ## unsupported construct shows up here. with `strict`, any known gap
-  ## raises IworkFormatError instead of being reported
+  ## raises IworkFormatError instead of being reported. `opts` works like
+  ## it does for `textBlocks`, except the raw fallback can't honor it
   runnableExamples "-r:off":
     let report = openDocument("report.pages").getTextReport()
     for w in report.warnings:
@@ -86,7 +91,7 @@ proc getTextReport*(doc: IworkDocument, strict = false): TextReport =
     echo report.text
   var blocks: seq[TextBlock]
   try:
-    blocks = doc.index.textBlocks(doc.kind, result.warnings)
+    blocks = doc.index.textBlocks(doc.kind, result.warnings, opts)
   except IworkFormatError as e:
     if strict:
       raise
@@ -108,15 +113,17 @@ proc getTextReport*(doc: IworkDocument, strict = false): TextReport =
     result.text = doc.plainText()
     result.usedFallback = true
 
-proc getText*(doc: IworkDocument): string =
+proc getText*(doc: IworkDocument, opts = ExtractOptions()): string =
   ## all of the document's text in reading order - headers, body,
   ## footers, text boxes, presenter notes and table rows - joined with
   ## newlines. falls back to `plainText` when the structure doesn't
   ## decode, or comes up empty because of a known gap, so there's always
-  ## something to index. use `getTextReport` to see those gaps
+  ## something to index. use `getTextReport` to see those gaps, and
+  ## `opts` to leave out notes, skipped slides, headers, or footers
   runnableExamples "-r:off":
     echo openDocument("report.pages").getText()
-  doc.getTextReport().text
+    echo openDocument("deck.key").getText(ExtractOptions(excludeNotes: true))
+  doc.getTextReport(opts = opts).text
 
 proc slides*(doc: IworkDocument): seq[Slide] =
   ## the presented slides of a keynote document, in deck order;
